@@ -1,0 +1,258 @@
+/* components/quotes/quotationModal.css
+   Design tokens (ACCENT, HAIR, PANEL, MONO, SANS, GREEN) are handed down
+   as CSS custom properties from the component, since they live as JS
+   constants in theme/tokens rather than in this stylesheet. */
+
+.qm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 15, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 40;
+}
+
+.qm-dialog {
+  width: 100%;
+  max-width: 620px;
+  background: var(--qm-panel);
+  border: 1px solid var(--qm-hair);
+  border-radius: 14px;
+  padding: 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.qm-title {
+  font-family: var(--qm-sans);
+  font-size: 24px;
+  color: var(--qm-accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.qm-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  background: #0D1117;
+  border: 1px solid var(--qm-hair);
+  border-radius: 10px;
+}
+.qm-total-label {
+  font-family: var(--qm-sans);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8B96A3;
+}
+.qm-total-value {
+  font-family: var(--qm-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--qm-green);
+}
+
+.qm-section { margin-top: 18px; }
+.qm-section-title {
+  font-family: var(--qm-sans);
+  font-size: 13px;
+  color: var(--qm-accent);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--qm-hair);
+}
+
+.qm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.qm-field {
+  display: block;
+  cursor: text;
+}
+
+.qm-field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.qm-input {
+  width: 100%;
+  padding: 9px 10px;
+  background: #0D1117;
+  color: #EFEAE0;
+  border: 1px solid var(--qm-hair);
+  border-radius: 7px;
+  font-family: var(--qm-mono);
+  font-size: 16px; /* keeps iOS from zooming in on focus */
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Explicit focus treatment — the previous version silenced the native
+   outline without supplying a replacement, which left keyboard users
+   with no visible indication of which field was active. */
+.qm-input:focus {
+  border-color: var(--qm-accent);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.qm-input--readonly {
+  color: #8B96A3;
+  cursor: default;
+}
+.qm-input--readonly:focus {
+  border-color: var(--qm-hair);
+  box-shadow: none;
+}
+
+.qm-input--auto {
+  color: var(--qm-green);
+  border-color: var(--qm-green-dim);
+}
+.qm-input--auto:focus {
+  border-color: var(--qm-green);
+  box-shadow: 0 0 0 3px rgba(140, 201, 143, 0.18);
+}
+
+.qm-input--dim {
+  opacity: 0.75;
+  cursor: default;
+}
+.qm-input--dim:focus {
+  border-color: var(--qm-green-dim);
+  box-shadow: none;
+}
+
+.qm-textarea {
+  min-height: 62px;
+  resize: vertical;
+}
+
+.qm-auto-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--qm-mono);
+  font-size: 11px;
+  color: var(--qm-green-dim);
+  cursor: default;
+  opacity: 0.5;
+}
+.qm-auto-toggle.is-active {
+  color: var(--qm-green);
+  cursor: pointer;
+  opacity: 1;
+}
+.qm-auto-toggle:focus-visible {
+  outline: 2px solid var(--qm-green);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.qm-lines {
+  margin-top: 18px;
+  border-top: 1px solid var(--qm-hair);
+}
+.qm-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--qm-hair);
+  font-family: var(--qm-mono);
+  font-size: 13px;
+  color: #D5DBE2;
+}
+.qm-line:last-child { border-bottom: none; }
+
+.qm-error {
+  font-family: var(--qm-mono);
+  font-size: 12px;
+  color: #E68A72;
+  margin-top: 12px;
+}
+
+.qm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.qm-btn {
+  border-radius: 8px;
+  font-family: var(--qm-sans);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+  border: 1px solid transparent;
+  transition: filter 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.qm-btn:disabled { cursor: progress; opacity: 0.75; }
+.qm-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.qm-btn--primary {
+  flex: 1 1 180px;
+  padding: 13px;
+  background: var(--qm-accent);
+  color: #141820;
+  font-weight: 700;
+  border: none;
+}
+.qm-btn--primary:hover:not(:disabled) { filter: brightness(1.06); }
+.qm-btn--primary.is-saved { background: var(--qm-green); }
+
+.qm-btn--outline {
+  flex: 0 1 150px;
+  padding: 13px 20px;
+  background: transparent;
+  border: 1px solid var(--qm-green);
+  color: var(--qm-green);
+}
+.qm-btn--outline:hover { background: rgba(140, 201, 143, 0.08); }
+
+.qm-btn--ghost {
+  flex: 0 1 120px;
+  padding: 13px 20px;
+  background: transparent;
+  border: 1px solid var(--qm-hair);
+  color: #B7C0CA;
+}
+.qm-btn--ghost:hover { border-color: #B7C0CA; }
+
+/* Removes the native step spinner from number inputs. On a form this
+   dense with numeric fields the spinner is mostly visual noise and
+   renders inconsistently between Chrome, Firefox, and Safari. */
+.qm-input[type='number']::-webkit-inner-spin-button,
+.qm-input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.qm-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qm-input, .qm-btn, .qm-auto-toggle { transition: none; }
+}

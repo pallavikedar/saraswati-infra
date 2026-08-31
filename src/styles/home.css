@@ -1,0 +1,498 @@
+/* styles/home.css — the signed-in shell.
+   Elevation here is a lighter surface tone plus a hairline border, never a
+   black shadow: on a near-black background a dark shadow is invisible and a
+   white card reads as a hole. */
+
+/* ── Tokens ────────────────────────────────────────────────────────────
+   Previously undefined — every --app-* var below was being read as
+   `initial`, so borders, text, and the accent were all falling back to
+   browser defaults. Values here pull from the Prospera Saraswati crest
+   (gold, charcoal) instead of the old blue, so the rail, chips, and card
+   accents on this page finally match the cards and cover art. */
+:root {
+  --app-bg: #14171C;
+  --app-surface: #1B1F26;
+  --app-surface-alt: #22262E;
+  --app-text: #F2F0EA;
+  --app-text-2: #A8AEB9;
+  --app-text-3: #767C87;
+  --app-border: rgba(255, 255, 255, 0.09);
+  --app-accent: #C9A15A;
+  --app-accent-dim: rgba(201, 161, 90, 0.35);
+  --app-accent-soft: rgba(201, 161, 90, 0.14);
+
+  --app-font-display: 'Fraunces', Georgia, serif;
+  --app-font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  font-family: var(--app-font-body);
+}
+
+.shell {
+  min-height: 100dvh;
+  background: var(--app-bg);
+  color: var(--app-text);
+  display: flex;
+  flex-direction: column;
+}
+.shell--wide { flex-direction: row; }
+
+.shell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shell-strip { padding: 20px 28px 8px; }
+.shell-strip > * { max-width: 1160px; margin: 0 auto; }
+.shell-content { flex: 1; min-height: 0; overflow-y: auto; }
+.shell--wide .shell-content > * { max-width: 1160px; margin: 0 auto; }
+
+/* ── Desktop rail ──────────────────────────────────────────────────── */
+.rail {
+  width: 248px;
+  flex: 0 0 248px;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 16px;
+  background: linear-gradient(180deg, #211B12 0%, #14120D 100%);
+  border-right: 1px solid var(--app-border);
+}
+.rail-brand { padding: 22px 18px 18px; }
+.rail-brand img { height: 30px; }
+.rail-user { display: flex; align-items: center; gap: 10px; padding: 0 18px 14px; }
+.rail-user > div { min-width: 0; display: flex; flex-direction: column; }
+.rail-user-hint { color: rgba(255,255,255,0.55); font-size: 11px; }
+.rail-user strong {
+  font-family: var(--app-font-display);
+  font-size: 14px; font-weight: 600; color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rail-rule { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 0 0 10px; }
+.rail-nav { list-style: none; margin: 0; padding: 0; }
+
+.rail-item {
+  display: flex; align-items: center; gap: 12px;
+  width: calc(100% - 24px);
+  margin: 3px 12px;
+  padding: 11px 12px;
+  border: 0; border-radius: 10px;
+  background: none;
+  color: rgba(255,255,255,0.65);
+  font: inherit; font-size: 13.5px; font-weight: 500;
+  text-align: left; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.rail-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.rail-item--on { background: var(--app-accent-soft); color: var(--app-accent); font-weight: 600; }
+.rail-item--on:hover { background: var(--app-accent-soft); }
+.rail-signout { margin-top: auto; }
+
+/* ── Phone header ──────────────────────────────────────────────────── */
+.phone-head {
+  padding: 18px 20px 16px;
+  background: linear-gradient(135deg, #221B12 0%, #14120D 100%);
+  border-radius: 0 0 28px 28px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.phone-head-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.phone-head-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.phone-head-who span { color: rgba(255,255,255,0.55); font-size: 12px; }
+.phone-head-who strong {
+  font-family: var(--app-font-display);
+  font-size: 17px; font-weight: 600; color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.phone-head-logo {
+  height: 26px; padding: 6px 10px;
+  background: rgba(255,255,255,0.94); border-radius: 12px;
+}
+.iconbtn {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.08);
+  color: #fff; font-size: 16px; cursor: pointer;
+}
+
+
+.avatar {
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.22);
+  background: linear-gradient(135deg, var(--app-accent), #8A6B32);
+  color: #14120D; font-family: var(--app-font-display); font-size: 17px; font-weight: 600;
+  box-shadow: 0 3px 12px rgba(201,161,90,0.3);
+}
+
+/* ── Stat bar ──────────────────────────────────────────────────────── */
+.statbar {
+  display: flex; align-items: stretch;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface-alt);
+}
+.stat-seg {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  text-align: center;
+}
+.stat-seg strong {
+  font-family: var(--app-font-display);
+  font-size: 15px; font-weight: 600; color: var(--app-accent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.stat-seg span { font-size: 10px; color: var(--app-text-3); letter-spacing: 0.2px; }
+.stat-divider { width: 1px; background: var(--app-border); }
+
+/* ── Segmented tabs (phone) ────────────────────────────────────────── */
+.segmented {
+  display: flex; gap: 3px;
+  margin-top: 16px; padding: 3px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.24);
+}
+.segmented-tab {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 9px 4px;
+  border: 0; border-radius: 9px;
+  background: none;
+  color: rgba(255,255,255,0.5);
+  font: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.segmented-tab.is-on { background: var(--app-accent); color: #14120D; font-weight: 700; }
+
+/* ── Tab panes ─────────────────────────────────────────────────────── */
+.tabpane { padding: 14px 16px 40px; }
+.tabpane-controls { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.tabpane-meta {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.05em;
+  color: var(--app-text-3);
+}
+.tabpane-hint { margin-left: auto; font-weight: 400; letter-spacing: 0; }
+.linkbtn {
+  margin-left: auto;
+  border: 0; background: none; padding: 0;
+  color: var(--app-accent); font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+
+.searchbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface-alt);
+}
+.searchbar:focus-within { border-color: var(--app-accent); }
+.searchbar input {
+  flex: 1; min-width: 0;
+  padding: 14px 0;
+  border: 0; background: none; outline: none;
+  color: var(--app-text); font: inherit; font-size: 14px;
+}
+.searchbar input::placeholder { color: var(--app-text-3); }
+.searchbar-icon { opacity: 0.75; }
+.searchbar-clear {
+  border: 0; border-radius: 8px; padding: 4px 7px;
+  background: var(--app-surface); color: var(--app-text-3);
+  cursor: pointer; font-size: 12px;
+}
+
+.chiprow { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.chip {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 20px;
+  background: var(--app-surface-alt);
+  color: var(--app-text-2);
+  font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.chip--on { background: var(--app-accent); border-color: var(--app-accent); color: #14120D; }
+
+/* ── Card grid: one column on phones, wrapped columns on desktop ───── */
+.cardgrid { display: flex; flex-direction: column; gap: 16px; }
+@media (min-width: 900px) {
+  .cardgrid {
+    flex-direction: row; flex-wrap: wrap;
+    justify-content: center; gap: 20px;
+  }
+  .cardgrid > * { width: 380px; }
+}
+
+/* ── Quotation card ────────────────────────────────────────────────── */
+.qcard {
+  display: flex; align-items: stretch;
+  width: 100%; padding: 0;
+  border: 1.5px solid var(--app-border);
+  border-radius: 20px;
+  background: var(--app-surface);
+  color: inherit; font: inherit; text-align: left;
+  cursor: pointer; overflow: hidden;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.qcard:hover { border-color: var(--app-accent); }
+.qcard.is-pressed {
+  transform: scale(0.98);
+  border-color: var(--app-accent);
+  box-shadow: 0 4px 24px rgba(201,161,90,0.2);
+}
+.qcard-spine { flex: 0 0 4px; background: var(--app-accent); }
+.qcard-body { flex: 1; min-width: 0; padding: 16px; display: block; }
+.qcard-top { display: flex; align-items: flex-start; gap: 12px; }
+.qcard-glyph {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #8A6B32, #4E3C1C);
+  box-shadow: 0 4px 10px rgba(201,161,90,0.25);
+}
+.qcard-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qcard-who strong { font-family: var(--app-font-display); font-size: 15px; font-weight: 600; }
+.qcard-who span {
+  font-size: 12px; color: var(--app-text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.qcard-money {
+  flex: 0 0 auto; display: flex; flex-direction: column;
+  align-items: flex-end; gap: 2px;
+}
+.qcard-money strong { font-size: 14px; font-weight: 700; color: var(--app-accent); }
+.qcard-money span { font-size: 11px; color: var(--app-text-3); }
+.qcard-chips { display: flex; gap: 8px; margin-top: 12px; }
+.pill {
+  padding: 5px 10px;
+  border: 1px solid var(--app-accent-dim);
+  border-radius: 20px;
+  background: var(--app-accent-soft);
+  color: var(--app-accent);
+  font-size: 11px; font-weight: 600;
+}
+
+/* ── Map card ──────────────────────────────────────────────────────── */
+.mcard {
+  border: 1.5px solid var(--app-border);
+  border-radius: 20px;
+  background: var(--app-surface);
+  overflow: hidden;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.mcard:hover { border-color: var(--app-accent); }
+.mcard.is-pressed {
+  transform: scale(0.985);
+  box-shadow: 0 4px 24px rgba(201,161,90,0.18);
+}
+.mcard-cover { position: relative; aspect-ratio: 16 / 9; }
+.mcard-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mcard-fallback {
+  width: 100%; height: 100%;
+  display: grid; place-items: center;
+  font-size: 40px;
+  background: linear-gradient(135deg, #221B12, #14120D);
+}
+.mcard-fade {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+  background: linear-gradient(to bottom, transparent, var(--app-surface));
+  pointer-events: none;
+}
+.mcard-foot { display: flex; align-items: center; gap: 12px; padding: 12px 14px 14px; }
+.mcard-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mcard-name strong {
+  font-family: var(--app-font-display);
+  font-size: 14px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mcard-name span { font-size: 11px; color: var(--app-text-3); }
+.mcard-open {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border: 1.5px solid var(--app-accent-dim);
+  border-radius: 12px;
+  background: var(--app-accent-soft);
+  color: var(--app-accent);
+  font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.mcard-open:hover { background: rgba(201,161,90,0.3); }
+
+/* ── Empty + loading ───────────────────────────────────────────────── */
+.empty { display: grid; place-items: center; gap: 6px; padding: 56px 24px; text-align: center; }
+.empty-badge {
+  width: 72px; height: 72px;
+  display: grid; place-items: center;
+  border-radius: 20px;
+  background: var(--app-surface-alt);
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+.empty-badge--search { background: var(--app-accent-soft); }
+.empty h3 { margin: 0; font-family: var(--app-font-display); font-size: 16px; font-weight: 600; }
+.empty p { margin: 0; font-size: 13px; color: var(--app-text-2); max-width: 34ch; }
+
+.spinner {
+  width: 28px; height: 28px;
+  margin: 56px auto;
+  border: 2.5px solid var(--app-accent-dim);
+  border-top-color: var(--app-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+  .qcard, .mcard, .chip, .segmented-tab, .rail-item { transition: none; }
+}
+
+/* styles/Mapheader.css */
+
+/* One source of truth for the header's footprint. PlanMap's Filters
+   button reads --mh-block to sit below it, so the two stay in step
+   instead of both guessing at a magic `top` value. */
+/* styles/Mapheader.css */
+
+:root {
+  --mh-top: 14px;
+  --mh-left: 14px;
+  --mh-logo: 52px;
+  --mh-logo-a: var(--mh-logo);
+  --mh-logo-b: var(--mh-logo);
+  --mh-pad-y: 10px;
+  --mh-block: calc(var(--mh-logo) + var(--mh-pad-y) * 2 + var(--mh-top) + 12px);
+}
+
+.mh {
+  position: absolute;
+  top: max(var(--mh-top), env(safe-area-inset-top));
+  left: max(var(--mh-left), env(safe-area-inset-left));
+  right: max(var(--mh-left), env(safe-area-inset-right));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.mh > * { pointer-events: auto; }
+
+.mh-back {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #2A2F36;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+  touch-action: manipulation;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.mh-back:active { transform: scale(0.94); }
+
+.mh-logos {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: var(--mh-pad-y) 18px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FAF8F4 100%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+
+.mh-logo {
+  display: block;
+  width: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  object-fit: contain;
+}
+
+.mh-logo:first-of-type { height: 55px; }
+.mh-logo:last-of-type  { height: 55px; }
+
+.mh-rule {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 2px 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.16) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+/* Tablet */
+@media (max-width: 1024px) {
+  :root { --mh-logo: 46px; }
+  .mh-logos { gap: 14px; padding: var(--mh-pad-y) 15px; }
+}
+
+/* Phone — both logos stay, still large */
+@media (max-width: 600px) {
+  :root { --mh-top: 10px; --mh-left: 10px; --mh-logo: 38px; --mh-pad-y: 8px; }
+  .mh { gap: 8px; }
+  .mh-back { width: 40px; height: 40px; border-radius: 11px; }
+  .mh-logos { gap: 11px; padding: var(--mh-pad-y) 12px; border-radius: 12px; }
+}
+
+/* Small phone */
+@media (max-width: 400px) {
+  :root { --mh-logo: 32px; --mh-left: 8px; }
+  .mh { gap: 6px; }
+  .mh-back { width: 38px; height: 38px; }
+  .mh-logos { gap: 9px; padding: var(--mh-pad-y) 10px; }
+}
+
+/* Landscape phone — height is the scarce dimension, not width */
+@media (max-height: 450px) and (orientation: landscape) {
+  :root { --mh-top: 6px; --mh-logo: 30px; --mh-pad-y: 5px; }
+}
+
+
+
+
+.filter-toggle-btn {
+  position: absolute;
+  top: var(--mh-block);
+  left: 14px;
+  z-index: 6;
+}
+
+/* Tablet + Mobile */
+@media (max-width: 1024px) {
+  .filter-toggle-btn {
+    top: auto;
+    bottom: 50px;
+    left: 14px;
+  }
+}
+
+.orbit-toggle-btn {
+  position: absolute;
+  top: var(--mh-block);
+  left: 96px;          /* clear of the Filters button — match its width */
+  z-index: 6;
+}
+
+

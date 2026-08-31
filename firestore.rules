@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Starting point only. Open reads let the public viewer work; status
+// writes are closed until you wire up auth. Swap the plot rule for
+// `allow update: if request.auth != null;` once sales staff sign in.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /maps/{mapId} {
+      allow read: if true;
+      allow write: if false;
+
+      // plots, features, polygons — whichever subcollection this map uses
+      match /{sub}/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      match /quotations/{quotationId} {
+        allow read: if false;
+        allow create: if true;   // sales enquiries come from the public viewer
+        allow update, delete: if false;
+      }
+    }
+  }
+}

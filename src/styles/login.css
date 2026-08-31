@@ -1,0 +1,280 @@
+/* styles/login.css — the login shell and the shared field / toast styling.
+   Subtle pass: the page should feel still and considered, not animated at
+   the viewer. Ambient motion is nearly imperceptible rather than absent —
+   a held breath, not a pulse. */
+
+:root {
+  --brand-primary-dark: #3A2C16;
+  --brand-primary: #8A6B32;
+  --brand-primary-light: #C9A15A;
+  --brand-accent: #C9A15A;
+
+  --login-card-bg: rgba(255, 255, 255, 0.035);
+  --login-card-border: rgba(255, 255, 255, 0.09);
+  --login-text-2: rgba(255, 255, 255, 0.52);
+
+  --login-field-bg: rgba(255, 255, 255, 0.03);
+  --login-field-bg-focus: rgba(255, 255, 255, 0.05);
+  --login-field-border: rgba(255, 255, 255, 0.13);
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.login {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: hidden;
+  background: #15130D;
+  font-family: var(--font-body);
+}
+
+/* ── Background ────────────────────────────────────────────────────────
+   A held gradient rather than a drifting one — it shifts by roughly one
+   pixel of perceived color over a full minute, present enough to keep the
+   field from looking flat but never something a person would describe as
+   "moving." */
+.login-bg {
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(160deg, #15130D 0%, #1C1811 55%, #241D13 100%);
+  background-size: 160% 160%;
+  animation: bgDrift 60s ease-in-out infinite;
+}
+@keyframes bgDrift {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 30% 60%; }
+}
+
+/* ── Ambient texture ───────────────────────────────────────────────────
+   Two soft fields instead of four orbs, barely visible, drifting slowly
+   enough that motion sensitivity is a non-issue at these amplitudes. */
+.login-orbs { position: absolute; inset: 0; }
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(201, 161, 90, var(--orb-opacity)) 0%,
+    rgba(201, 161, 90, 0) 70%
+  );
+  animation: orbFloat var(--orb-dur) ease-in-out infinite;
+}
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(8px, -10px); }
+}
+
+.login-hairline {
+  position: absolute;
+  left: 0; right: 0; top: 38%;
+  height: 1px;
+  background: #fff;
+  opacity: 0.045;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+.login-shell { position: relative; width: 100%; max-width: 420px; }
+.login-stack { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+
+.brand-mark {
+  width: 76px; height: 76px;
+  padding: 5px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+.brand-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: 13px; }
+
+.brand-title { text-align: center; }
+.brand-title h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: #F2EEE4;
+}
+.brand-tag {
+  display: inline-block;
+  margin-top: 9px;
+  padding: 4px 13px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 20px;
+  background: rgba(255,255,255,0.04);
+  color: var(--login-text-2);
+  font-size: 11px;
+  letter-spacing: 0.8px;
+}
+
+/* ── Glass card ────────────────────────────────────────────────────── */
+.login-card {
+  width: 100%;
+  padding: 26px 24px;
+  border-radius: 20px;
+  border: 1px solid var(--login-card-border);
+  background: var(--login-card-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+  box-sizing: border-box;
+}
+.card-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 22px; }
+.card-rule {
+  flex: 0 0 auto;
+  width: 3px; height: 36px;
+  border-radius: 2px;
+  background: var(--brand-accent);
+  opacity: 0.7;
+}
+.card-head h2 { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 500; color: #F2EEE4; }
+.card-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--login-text-2); }
+
+/* ── Fields (shared with the register page) ────────────────────────── */
+.field { margin-bottom: 14px; }
+.field-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--login-field-border);
+  border-radius: 12px;
+  background: var(--login-field-bg);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.field-box:focus-within {
+  border-color: var(--brand-accent);
+  background: var(--login-field-bg-focus);
+}
+.field-icon {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  margin-left: 14px;
+  fill: var(--login-text-2);
+  transition: fill 0.2s ease;
+}
+.field-box:focus-within .field-icon { fill: var(--brand-accent); }
+
+.field-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 14px 8px;
+  border: 0;
+  background: none;
+  color: #F2EEE4;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.field-box label {
+  position: absolute;
+  left: 46px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--login-text-2);
+  font-size: 14px;
+  pointer-events: none;
+  transition: all 0.16s ease;
+}
+.field-box input:focus + label,
+.field-box input:not(:placeholder-shown) + label {
+  top: 12px;
+  transform: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--login-text-2);
+}
+.field-trailing { flex: 0 0 auto; padding-right: 8px; }
+.peek {
+  background: none; border: 0; cursor: pointer;
+  font-size: 14px; padding: 8px; line-height: 1;
+  opacity: 0.6;
+}
+.peek:hover { opacity: 1; }
+
+.field--error .field-box { border-color: #C0645A; }
+.field-error { margin: 6px 0 0 4px; font-size: 11.5px; color: #D99187; }
+
+/* ── Submit ────────────────────────────────────────────────────────── */
+.cta {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--brand-primary-light);
+  color: #1C1508;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+.cta:hover:not(:disabled) { filter: brightness(1.05); }
+.cta:active:not(:disabled) { transform: scale(0.99); }
+.cta:disabled { opacity: 0.65; cursor: progress; }
+.cta-label { position: relative; }
+.cta-shimmer { display: none; }
+
+/* ── Register link ─────────────────────────────────────────────────── */
+.register-link {
+  display: inline-block;
+  padding: 9px 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 22px;
+  background: transparent;
+  color: var(--login-text-2);
+  font-size: 13px;
+  text-decoration: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.register-link:hover {
+  border-color: rgba(255,255,255,0.3);
+  color: #F2EEE4;
+}
+
+/* ── Toast ─────────────────────────────────────────────────────────── */
+.toast-stack {
+  position: fixed;
+  left: 50%; bottom: 24px;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 200;
+  width: min(420px, calc(100vw - 32px));
+}
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+}
+.toast--error { background: #9A4638; }
+.toast--success { background: #2E6E52; }
+.toast-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.85);
+  flex: 0 0 auto;
+}
+
+/* ── Back link on the register page ────────────────────────────────── */
+.back-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+  color: var(--login-text-2);
+  font-size: 13px;
+  text-decoration: none;
+}
+.back-link:hover { color: #F2EEE4; }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-bg, .orb { animation: none; }
+  .field-box, .cta, .register-link { transition: none; }
+}
