@@ -8,7 +8,7 @@ import PlanContent from './PlanContent';
 import DimensionOverlay from './DimensionOverlay';
 import CameraControls from './CameraControls';
 import FilterPanel from './FilterPanel';
-import StatusLegend from './StatusLegend';
+import StatusLegend from './Statuslegend';
 import MapToggles from './Maptoggles';
 
 import { useGoogleMaps } from '../../hooks/useGoogleMaps';
