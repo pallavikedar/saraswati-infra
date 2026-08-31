@@ -1,99 +1,3 @@
-// import React from 'react';
-// import ReactDOM from 'react-dom/client';
-// import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-
-// import { AuthProvider } from './context/AuthContext';
-// import { ToastProvider } from './components/Toast';
-
-// import LoginPage from './pages/LoginPage';
-// import RegisterEmployeePage from './pages/RegisterEmployeePage';
-// import EmployeeHome from './pages/EmployeeHome';
-// import PlotMap from './components/map/PlanMap';
-// import  PlanPage from './pages/PlanPage';
-
-// ReactDOM.createRoot(document.getElementById('root')).render(
-//   <React.StrictMode>
-//     <BrowserRouter>
-//       <AuthProvider>
-//         <ToastProvider>
-//           <Routes>
-//             <Route path="/login" element={<LoginPage />} />
-//             <Route path="/register" element={<RegisterEmployeePage />} />
-//             <Route path="/" element={<EmployeeHome />} />
-//             <Route path="/maps/:mapId/*" element={<PlanPage/>} />
-//             {/* <Route path="/maps/:mapId/*" element={<PlanPage/>} /> */}
-//             <Route path="*" element={<Navigate to="/" replace />} />
-//           </Routes>
-//         </ToastProvider>
-//       </AuthProvider>
-//     </BrowserRouter>
-//   </React.StrictMode>,
-// );
-
-
-
-
-
-
-
-
-
-// import React from 'react';
-// import ReactDOM from 'react-dom/client';
-// import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-
-// import { AuthProvider } from './context/Authcontext';
-// import { ToastProvider } from './components/Toast';
-
-// import LoginPage from './pages/LoginPage';
-// import RegisterEmployeePage from './pages/RegisterEmployeePage';
-// import EmployeeHome from './pages/EmployeeHome';
-// import PlanPage from './pages/PlanPage';
-// import QuotationPage from './pages/Quotationpage';
-// import QuotationFormPage from './pages/Quotationformpage';
-
-// /**
-//  * A quotation gets its own URL rather than living in component state.
-//  *
-//  * The reason is the job: a salesman has one open, the customer asks a
-//  * question, he goes to the map to check a neighbouring plot and comes
-//  * back. With the quotation held in state that round trip loses it. With
-//  * a URL the back button returns to it, the browser's history works, and
-//  * a colleague can be sent a link to the exact record.
-//  *
-//  * `new` sits before `:id` so the literal wins — otherwise
-//  * /quotations/new resolves as a quotation whose id is the word "new".
-//  */
-// ReactDOM.createRoot(document.getElementById('root')).render(
-//   <React.StrictMode>
-//     <BrowserRouter>
-//       <AuthProvider>
-//         <ToastProvider>
-//           <Routes>
-//             <Route path="/login" element={<LoginPage />} />
-//             <Route path="/register" element={<RegisterEmployeePage />} />
-//             <Route path="/" element={<EmployeeHome />} />
-
-//             <Route path="/quotations/new" element={<QuotationFormPage />} />
-//             <Route path="/quotations/:id" element={<QuotationPage />} />
-//             <Route path="/quotations/:id/edit" element={<QuotationFormPage />} />
-
-//             <Route path="/maps/:mapId/*" element={<PlanPage />} />
-
-//             <Route path="*" element={<Navigate to="/" replace />} />
-//           </Routes>
-//         </ToastProvider>
-//       </AuthProvider>
-//     </BrowserRouter>
-//   </React.StrictMode>,
-// );
-
-
-
-
-
-
-
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -130,17 +34,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            {/* // <Route path="/register" element={<RegisterEmployeePage />} />
-            // <Route path="/" element={<EmployeeHome />} />
-
-            // <Route path="/quotations" element={<QuotationsListPage />} />
-            // <Route path="/quotations/new" element={<QuotationFormPage />} />
-            // <Route path="/quotations/:id" element={<QuotationPage />} />
-            // <Route path="/quotations/:id/edit" element={<QuotationFormPage />} />
-
-            // <Route path="/maps/:mapId/*" element={<PlanPage />} />
-
-            // <Route path="*" element={<Navigate to="/" replace />} /> */}
+          
 
             <Route path="/" element={<RequireAuth><EmployeeHome /></RequireAuth>} />
 <Route path="/quotations" element={<RequireAuth><QuotationsListPage /></RequireAuth>} />

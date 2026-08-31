@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../firebase/config';
-import { userFromDoc, userToMap, canSignIn } from '../models/userModel';
+import { userFromDoc, userToMap, canSignIn } from '../models/Usermodel';
 
 const USERS = 'saraswati_user';
 const SESSION_KEY = 'saraswati_session_user';
