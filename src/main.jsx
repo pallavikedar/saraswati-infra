@@ -8,7 +8,7 @@ import { ToastProvider } from './components/Toast';
 
 import LoginPage from './pages/LoginPage';
 // import RegisterEmployeePage from './pages/RegisterEmployeePage';
-import EmployeeHome from './pages/EmployeeHome';
+import EmployeeHome from './pages/Employeehome';
 import PlanPage from './pages/PlanPage';
 import QuotationsListPage from './pages/Quotationspage';
 import QuotationPage from './pages/Quotationpage';
