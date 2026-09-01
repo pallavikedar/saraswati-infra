@@ -249,7 +249,6 @@
 // }
 
 
-
 import React, { useMemo, useState } from 'react';
 
 import {
@@ -327,7 +326,7 @@ export default function FilterPanel({ plots, filters, onApply, onClose }) {
       aria-label="Filter plots"
       style={{
         position: 'absolute', top: 14, left: 14, zIndex: 7,
-        width: 320, maxHeight: 'calc(100% - 28px)',
+        width: 320, maxWidth: 'calc(100vw - 28px)', maxHeight: 'calc(100% - 28px)',
         display: 'flex', flexDirection: 'column',
         background: CANVAS,
         border: `1px solid ${HAIR}`,
@@ -341,22 +340,84 @@ export default function FilterPanel({ plots, filters, onApply, onClose }) {
         .filter-panel .fp-body::-webkit-scrollbar-thumb {
           background: ${HAIR}; border-radius: 3px;
         }
+
+        /* Tablet / small laptop: keep floating panel, just narrower & tighter */
+        @media (max-width: 900px) {
+          .filter-panel {
+            width: min(300px, calc(100vw - 24px)) !important;
+            top: 12px !important; left: 12px !important;
+          }
+        }
+
+        /* Phone landscape / small tablet: shrink further, tighten paddings */
         @media (max-width: 640px) {
           .filter-panel {
             top: auto !important; left: 8px !important; right: 8px;
             bottom: 8px; width: auto !important; max-height: 78% !important;
           }
+          .filter-panel .fp-header {
+            padding: 12px 14px 9px !important;
+          }
+          .filter-panel .fp-body {
+            padding: 12px !important;
+            gap: 14px !important;
+          }
+          .filter-panel .fp-footer {
+            padding: 10px !important;
+          }
+        }
+
+        /* Phone portrait: smaller text/controls, more of the sheet used */
+        @media (max-width: 420px) {
+          .filter-panel {
+            left: 6px !important; right: 6px; bottom: 6px;
+            max-height: 85% !important; border-radius: 12px !important;
+          }
+          .filter-panel .fp-title {
+            font-size: 12px !important;
+          }
+          .filter-panel input,
+          .filter-panel button {
+            font-size: 12px !important;
+          }
+          .filter-panel .fp-footer {
+            grid-template-columns: 1fr 1.4fr !important;
+          }
+        }
+
+        /* Very small phones */
+        @media (max-width: 340px) {
+          .filter-panel .fp-body {
+            padding: 10px !important;
+            gap: 12px !important;
+          }
+          .filter-panel .fp-footer button {
+            padding: 10px 0 !important;
+          }
+        }
+
+        /* Short viewports (landscape phones): cap sheet height sensibly */
+        @media (max-height: 480px) {
+          .filter-panel {
+            max-height: 92% !important;
+          }
         }
       `}</style>
 
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px 11px', borderBottom: `1px solid ${HAIR}`,
-      }}>
-        <div style={{
-          fontFamily: SANS, fontSize: 13, letterSpacing: '0.08em',
-          textTransform: 'uppercase', color: ACCENT,
-        }}>
+      <header
+        className="fp-header"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px 11px', borderBottom: `1px solid ${HAIR}`,
+        }}
+      >
+        <div
+          className="fp-title"
+          style={{
+            fontFamily: SANS, fontSize: 13, letterSpacing: '0.08em',
+            textTransform: 'uppercase', color: ACCENT,
+          }}
+        >
           Filters
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -465,10 +526,13 @@ export default function FilterPanel({ plots, filters, onApply, onClose }) {
         </Section>
       </div>
 
-      <footer style={{
-        display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 9,
-        padding: 12, borderTop: `1px solid ${HAIR}`,
-      }}>
+      <footer
+        className="fp-footer"
+        style={{
+          display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 9,
+          padding: 12, borderTop: `1px solid ${HAIR}`,
+        }}
+      >
         <button
           type="button"
           onClick={() => { setDraft(EMPTY_FILTERS); onApply(null, EMPTY_FILTERS); }}
