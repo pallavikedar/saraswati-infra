@@ -726,7 +726,7 @@ export default function DetailPanel({
         }
 
         .pp {
-          --pp-peek-body: 88px;
+          --pp-peek: 200px;
           position: absolute;
           top: 14px; right: 14px;
           width: 320px;
@@ -941,11 +941,7 @@ export default function DetailPanel({
           }
           /* peeking: name, status, figures, CTA — and the plot still
              visible above it, which is the whole point */
-          .pp[data-collapsed="1"] { max-height: none; }
-.pp[data-collapsed="1"] .pp-body {
-  max-height: var(--pp-peek-body);
-  overflow: hidden;
-}
+          .pp[data-collapsed="1"] { max-height: var(--pp-peek); }
 
           .pp-grab {
             display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -980,7 +976,7 @@ export default function DetailPanel({
           .pp {
             left: 16px; right: 16px; bottom: 16px;
             margin: 0 auto; max-width: 760px;
-            --pp-peek-body: 210px;
+            --pp-peek: 210px;
           }
           .pp-head { padding: 6px 18px 12px; }
           .pp-name { font-size: 26px; }
@@ -998,7 +994,7 @@ export default function DetailPanel({
 
         /* phone */
         @media (max-width: 640px) {
-          .pp { left: 8px; right: 8px; --pp-peek-body: 196px; }
+          .pp { left: 8px; right: 8px; --pp-peek: 196px; }
           .pp-head { padding: 6px 14px 10px; }
           .pp-name { font-size: 24px; }
           .pp-body { padding: 12px 14px 14px; }
@@ -1010,7 +1006,7 @@ export default function DetailPanel({
         }
 
         @media (max-width: 380px) {
-          .pp { --pp-peek-body: 188px; }
+          .pp { --pp-peek: 188px; }
           .pp-name { font-size: 21px; }
           .pp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .pp-row-k { flex-basis: 64px; }
@@ -1021,7 +1017,7 @@ export default function DetailPanel({
         /* landscape phone: almost no height to spend, so the peek is
            most of what there is and expanding is a last resort */
         @media (max-height: 460px) and (max-width: 900px) {
-          .pp { max-height: 78vh; --pp-peek-body: 148px; }
+          .pp { max-height: 78vh; --pp-peek: 148px; }
           .pp-name { font-size: 20px; }
           .pp-rows { grid-template-columns: 1fr 1fr; }
         }
