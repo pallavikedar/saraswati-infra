@@ -2175,25 +2175,26 @@ export default function PlanMap({
       {/* Filters. Above the orbit surface (zIndex 5) so it stays usable
           while a plot is raised. The count on the button is the only
           sign, once the panel is shut, that the layout is narrowed. */}
-      {!showFilters && (
-        <button
-          type="button"
-          onClick={() => setShowFilters(true)}
-          className="filter-toggle-btn"
-          style={{
-            bottom: (someBaseValue) + (inset.bottom || 0),
-            font: `500 13px/1 ${MONO}`,
-            color: filterHits ? CANVAS : '#E7E1D5',
-            background: filterHits ? ACCENT : CANVAS,
-            border: `1px solid ${filterHits ? ACCENT : HAIR}`,
-            borderRadius: 10,
-            padding: '11px 10px',
-            cursor: 'pointer',
-          }}
-        >
-          Filters{filterHits ? ` · ${filterHits.size}` : ''}
-        </button>
-      )}
+     {!showFilters && (
+  <button
+    type="button"
+    onClick={() => setShowFilters(true)}
+    className="filter-toggle-btn"
+    style={{
+      font: `500 13px/1 ${MONO}`,
+      color: filterHits ? CANVAS : '#E7E1D5',
+      background: filterHits ? ACCENT : CANVAS,
+      border: `1px solid ${filterHits ? ACCENT : HAIR}`,
+      borderRadius: 10,
+      padding: '11px 10px',
+      cursor: 'pointer',
+      transform: inset.bottom ? `translateY(-${inset.bottom}px)` : undefined,
+      transition: 'transform 160ms ease',
+    }}
+  >
+    Filters{filterHits ? ` · ${filterHits.size}` : ''}
+  </button>
+)}
 
       {showFilters && (
         <FilterPanel

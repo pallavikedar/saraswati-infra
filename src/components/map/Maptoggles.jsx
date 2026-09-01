@@ -69,6 +69,7 @@ export default function MapToggles({
   setShowNumbers,
   showStatus,
   setShowStatus,
+  offsetBottom = 0,
 }) {
   return (
     <>
