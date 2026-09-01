@@ -2181,6 +2181,7 @@ export default function PlanMap({
           onClick={() => setShowFilters(true)}
           className="filter-toggle-btn"
           style={{
+            bottom: (someBaseValue) + (inset.bottom || 0),
             font: `500 13px/1 ${MONO}`,
             color: filterHits ? CANVAS : '#E7E1D5',
             background: filterHits ? ACCENT : CANVAS,
@@ -2208,13 +2209,14 @@ export default function PlanMap({
         setShowNumbers={toggleNumbers}
         showStatus={statusOn}
         setShowStatus={toggleStatus}
+        offsetBottom={inset.bottom || 0}
       />
 
       {/* The key to the sale colours, only while those colours are up.
           `status` can be undefined on the first frames, before the
           Firestore read lands, so the legend is given an empty map
           rather than being allowed to index into nothing. */}
-      <StatusLegend plots={plots} status={status || {}} show={statusOn} />
+      <StatusLegend plots={plots} status={status || {}} show={statusOn} offsetBottom={inset.bottom || 0} />
 
       {error && (
         <div style={{

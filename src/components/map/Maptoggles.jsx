@@ -101,7 +101,7 @@ export default function MapToggles({
         style={{
           position: 'absolute',
           right: 20,
-          bottom: 20,
+          bottom: 20  + offsetBottom,
           zIndex: 6,
           display: 'flex',
           flexDirection: 'column',
