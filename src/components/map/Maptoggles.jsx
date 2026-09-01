@@ -69,7 +69,6 @@ export default function MapToggles({
   setShowNumbers,
   showStatus,
   setShowStatus,
-  offsetBottom = 0,
 }) {
   return (
     <>
@@ -102,7 +101,7 @@ export default function MapToggles({
         style={{
           position: 'absolute',
           right: 20,
-          bottom: 20  + offsetBottom,
+          bottom: 20,
           zIndex: 6,
           display: 'flex',
           flexDirection: 'column',
