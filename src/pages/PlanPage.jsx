@@ -170,7 +170,7 @@ export default function PlanPage() {
 
   return (
     <div style={{
-      width: '100%', height: "100%", minHeight: '100vh', position: 'relative',
+     width: '100%', height: '100dvh', position: 'relative',
       display: 'flex', flexDirection: 'column', background: CANVAS, color: '#E7E1D5',
       fontFamily: BODY, overflow: 'hidden',
     }}>
