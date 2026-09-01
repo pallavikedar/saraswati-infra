@@ -17,7 +17,13 @@
  * summary and balance breakdown on the right — total banner, terms,
  * signatures. It is built to fit ONE A4 page, which is why the type runs
  * small and the padding is tight.
+ *
+ * The logo is imported rather than referenced by path. The print window
+ * is about:blank, so it has no base URL to resolve a relative path
+ * against; whatever reaches the document has to be absolute or inlined.
  */
+
+import logoAsset from '../assets/logo.jpeg';
 
 const BLUE = '#1565C0';
 const DEEP = '#0D47A1';
@@ -90,7 +96,7 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
     display: flex; justify-content: space-between; align-items: center;
   }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .brand img { width: 34px; height: 34px; padding: 3px; background: #fff; border-radius: 6px; object-fit: contain; }
+  .brand img { width: 70px; height: auto; padding: 3px; background: #fff; border-radius: 6px; object-fit: contain; }
   .brand h1 { margin: 0; font-size: 15px; letter-spacing: 1.2px; }
   .brand p { margin: 0; font-size: 9px; opacity: 0.85; }
   .tag { background: #fff; color: ${BLUE}; font-weight: 700; font-size: 10.5px;
@@ -254,24 +260,68 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
 }
 
 /**
- * Open the print sheet. The window is written, then printed on load —
- * waiting for load matters when a logo is passed, or the sheet can open
- * before the image has decoded and print a gap where it should be.
+ * Inline the logo as a data URI.
+ *
+ * The bundler turns the import into a root-relative URL ("/assets/logo-
+ * a1b2c3.jpeg"), which the print window cannot resolve — about:blank has
+ * no base to resolve it against. Inlining also removes the network fetch
+ * that would otherwise still be in flight when the print sheet opens.
+ * Converted once per session and cached; if the fetch fails we fall back
+ * to an absolute URL, which at least renders on screen.
  */
-export function printQuotation(q, opts) {
+let cachedLogo = null;
+
+async function logoAsDataUrl(src) {
+  if (!src) return '';
+  if (src.startsWith('data:')) return src;
+  if (cachedLogo) return cachedLogo;
+  try {
+    const blob = await (await fetch(src)).blob();
+    cachedLogo = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    return cachedLogo;
+  } catch {
+    return new URL(src, window.location.href).href;
+  }
+}
+
+/**
+ * Write the document into a new window, optionally printing it.
+ *
+ * The window has to be opened synchronously, before the first await, or
+ * the pop-up blocker treats it as unrelated to the click that started it.
+ * Printing waits on the images rather than on w.onload: after a
+ * document.write the load event can fire before the handler is attached,
+ * and then the print sheet never opens at all.
+ */
+async function openQuotationWindow(q, opts = {}, print) {
   const w = window.open('', '_blank', 'width=900,height=1200');
-  if (!w) return false;           // pop-up blocked
-  w.document.write(quotationHtml(q, opts));
+  if (!w) return false;               // pop-up blocked
+
+  const logo = await logoAsDataUrl(opts.logo ?? logoAsset);
+  w.document.write(quotationHtml(q, { ...opts, logo }));
   w.document.close();
-  w.onload = () => { w.focus(); w.print(); };
+
+  if (print) {
+    await Promise.all([...w.document.images].map((img) => (img.complete
+      ? null
+      : new Promise((resolve) => { img.onload = img.onerror = resolve; }))));
+    w.focus();
+    w.print();
+  }
   return true;
+}
+
+/** Open the print sheet. Returns false if the pop-up was blocked. */
+export function printQuotation(q, opts) {
+  return openQuotationWindow(q, opts, true);
 }
 
 /** Preview without the print sheet — same document, no dialog. */
 export function previewQuotation(q, opts) {
-  const w = window.open('', '_blank', 'width=900,height=1200');
-  if (!w) return false;
-  w.document.write(quotationHtml(q, opts));
-  w.document.close();
-  return true;
+  return openQuotationWindow(q, opts, false);
 }
