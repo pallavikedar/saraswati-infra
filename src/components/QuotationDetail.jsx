@@ -201,10 +201,10 @@ export default function QuotationDetail({
 
         <Section title="Plot amount">
           <Row label="Total plot amount" value={q.totalPlotAmount} strong />
-          <Row label="Agreement amount (20%)" value={agreement} auto />
-          <Row label="Booking amount" value={q.bookingAmount} />
-          <Row label="Down payment" value={q.downPayment} />
-          <Row label="Balance amount" value={q.loanAmount} auto />
+          <Row label="Agreement (20%)" value={agreement} auto />
+          <Row label="Booking" value={q.bookingAmount} />
+          {/* <Row label="Down payment" value={q.downPayment} /> */}
+          <Row label="Remaining" value={q.loanAmount} auto />
         </Section>
 
         <Section title="Payment milestones">
@@ -289,7 +289,7 @@ export default function QuotationDetail({
           >
             Preview
           </button>
-          <button
+          {/* <button
             type="button" onClick={share}
             style={{
               ...btn, flex: '0 1 120px', background: 'transparent',
@@ -297,7 +297,7 @@ export default function QuotationDetail({
             }}
           >
             Share
-          </button>
+          </button> */}
           {onEdit && (
             <button
               type="button" onClick={() => onEdit(q)}

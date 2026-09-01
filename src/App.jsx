@@ -144,7 +144,7 @@ setShowStatus={setShowStatus}
           </div>
         )}
 
-        {loading && <Curtain>Reading map {MAP_ID}…</Curtain>}
+        {loading && <Curtain>Reading map…</Curtain>}
 
         {!loading && !layout && (
           <Curtain tone="#E0A33C">
@@ -154,7 +154,7 @@ setShowStatus={setShowStatus}
             }}>
               Nothing to draw
             </div>
-            {error
+            {/* {error
               ? <>Firestore said: {error}</>
               : (
                 <>
@@ -166,7 +166,7 @@ setShowStatus={setShowStatus}
                   somewhere else, add that path to SUBCOLLECTIONS in
                   src/firebase/mapRepo.js.
                 </>
-              )}
+              )} */}
           </Curtain>
         )}
       </div>

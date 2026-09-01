@@ -28,7 +28,7 @@
 /** The Firestore map this viewer opens — the same id the Flutter app
     (`lotusvencon`, screens/map_viewer_screen.dart) uses. Everything the
     plan draws comes out of this document and its plots. */
-export const MAP_ID = import.meta.env.VITE_MAP_ID || 'BT1meSHc2TcPf3f0VOrb';
+export const MAP_ID = import.meta.env.VITE_MAP_ID;
 
 /** Where the plots for that map are kept.
  *
@@ -62,11 +62,11 @@ export const HOME_VIEW = {
 
 /** Maps JavaScript API key. Needs the Maps JavaScript API enabled and
     this origin allowed as an HTTP referrer. */
-export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyC9IEgzx9X3YXxOSa9jjf2Da2yHioHef-0';
+export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 /** Optional Cloud-console Map ID, for a custom basemap style. Not needed
     for turning or tilting — the map container itself is what turns. */
-export const GOOGLE_MAP_STYLE_ID = import.meta.env.VITE_GOOGLE_MAP_STYLE_ID || '';
+export const GOOGLE_MAP_STYLE_ID = import.meta.env.VITE_GOOGLE_MAP_STYLE_ID;
 
 /** How far past the plan's edge the drawing window may reach (metres),
     and the largest texture we will ask a browser for on any one side. */

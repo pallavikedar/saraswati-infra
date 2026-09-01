@@ -6,7 +6,6 @@ import { createPortal } from 'react-dom';
 
 import PlanContent from './PlanContent';
 import DimensionOverlay from './DimensionOverlay';
-import CameraControls from './CameraControls';
 import FilterPanel from './FilterPanel';
 import StatusLegend from './Statuslegend';
 import MapToggles from './Maptoggles';
@@ -28,8 +27,51 @@ import '../../styles/home.css';
 
 export const DOWN_MS = 190;   // the old plot sinking
 export const UP_MS = 430;     // the new one rising
-export const FLY_MS = 6200;    // the camera closing in on a pick
+export const FLY_MS = 900;    // the camera closing in on a pick
+export const REAIM_MS = 320;  // the same pick re-aimed once a panel opens
+export const REFIT_MS = 260;  // the frame settling after a tilt
 export const easeOut = (t) => 1 - (1 - t) ** 3;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/* ── ONE PLACE FRAMES THE MAP ────────────────────────────────────────
+   This file. fitPlan for the whole layout, flyTo for a pick, and
+   nothing else may call fitBounds or setZoom on this map — a second
+   fitBounds from a parent runs afterwards and silently wins, which is
+   what used to leave a picked plot small in the middle of the frame
+   however tight the close-up was made.
+
+   Space taken by chrome is DECLARED, not framed around: pass `reserve`
+   ({ left, right, top, bottom } in screen px) and flyTo aims off centre
+   by that much. The toolbar's fit button gets fitPlan back through
+   `fitRef` rather than reimplementing it. */
+
+/* ── TWO CAMERAS, ONE AT A TIME ──────────────────────────────────────
+   A PICKED PLOT: the map CONTAINER is CSS-transformed by camRef, which
+   is what puts the raised block, its walls, the scrim and the plan in
+   one space that turns together.
+
+   THE UNPICKED MAP: Google's own camera turns instead — real heading
+   and tilt — so the imagery goes round a full 360° with the plan riding
+   on it, and because nothing is CSS-transformed the container needs no
+   oversizing and there is no padding at all in that state.
+
+   They must never both be off square at once, or the block would lean
+   by the sum. flyTo unwinds the native camera to north and flat across
+   the flight in, so the CSS camera takes over from square.
+
+   THE NATIVE HALF NEEDS A VECTOR MAP: GOOGLE_MAP_STYLE_ID must be a Map
+   ID whose style is Vector. On raster, heading and tilt are accepted
+   and ignored — the two-finger turn below will do nothing, though a
+   picked plot still behaves exactly as before. If the 360 is dead on
+   every device, check the Map ID before reading another line of this. */
+
+const RAD = Math.PI / 180;
+const NATIVE_MAX_TILT_DEG = Math.min(MAX_TILT / RAD, 67.5);  // vector cap
+const NATIVE_SPIN_DEG_PER_S = 10;                            // a lap in 36s
+const NATIVE_IDLE_MS = 2500;
+const NATIVE_SPIN_PER_PX = 0.4;   // degrees of heading per px of drag
+const NATIVE_TILT_PER_PX = 0.3;
 
 /* The close-up.
 
@@ -39,48 +81,176 @@ export const easeOut = (t) => 1 - (1 - t) ** 3;
    share of the screen than a big one, and a percentage would get it
    wrong at both ends. Too low and DimensionOverlay's figures clip.
 
-   CLOSE_BOOST is how much closer than a bare fit the camera goes. 1.0
-   is the fit itself — plot plus gutter exactly filling the frame. Above
-   that it pushes in and the outermost figures sit nearer the edges,
-   which is the trade: legible numbers against seeing the whole plot at
-   once. This is the knob to turn if a pick is not close enough; leave
-   the fit maths alone. Around 1.35 the plot starts outgrowing the frame.
+   IT IS TIED TO SCALE IN DimensionOverlay. That file's `off + txt` is
+   how far the outermost figure reaches past the plot; this must cover
+   it. At SCALE 1.35 that is about 1.5 m, hence 1.6. Raise SCALE without
+   raising this and the figures are framed off the edge of the screen —
+   which looks like the close-up being too tight, and is not.
+
+   LIFT_RESERVE is the fraction of the raised block's screen reach that
+   the fit sets aside — of the reach AT THE CURRENT TILT, not at
+   MAX_TILT. The block only reaches its full height when the view is
+   tilted right over, and a pick lands on a flat camera, so reserving
+   the full-tilt reach was what left the plot small and floating with
+   empty ground above and below. Worst on a phone, where there is no
+   spare screen to absorb it.
+
+   CLOSE_BOOST then pushes in past the fit. 1.0 is the fit itself: plot
+   plus gutter exactly filling the frame. Higher fills more screen at
+   the cost of the outermost figures sitting nearer the edges. Small
+   screens get more of it, because the chrome over them claims a bigger
+   share of a smaller frame. This is the knob to turn if a pick is not
+   close enough; leave the fit maths alone.
 
    SLACK keeps the drawing off the glass.
 
-   LIFT_BIAS sits the plot low by that fraction of the block's reach so
-   the RAISED block finishes centred instead of crowding the top edge;
-   set it to 0 if your camera stays flat on a pick.
+   LIFT_BIAS sits the plot low by that fraction of the reserved reach so
+   the RAISED block finishes centred instead of crowding the top edge.
 
    FLY_MIN_Z is a floor, not a target — it exists so a huge plot cannot
    pull the camera out to nothing. FLY_MAX_Z must not exceed MAP_MAX_Z
    or the fit is silently clamped and small plots stop getting closer.
    Past about 21 the satellite imagery has no more detail and Google
    upscales it: the overlay and its dimensions stay sharp, the photo
-   behind them goes soft. 22 is the honest ceiling if that matters to
-   the client; 24 if legibility of the figures wins. */
-const GUTTER = 0.9;
-const CLOSE_BOOST = 1.0;
+   behind them goes soft. */
+const GUTTER = 1.6;
+const LIFT_RESERVE = 0.4;
+const CLOSE_BOOST = 1.4;          // desktop
+const CLOSE_BOOST_TABLET = 1.65;
+const CLOSE_BOOST_PHONE = 1.9;
 const SLACK = 1.02;
 const LIFT_BIAS = 0.5;
 const FLY_MIN_Z = 17;
 const FLY_MAX_Z = 24;
 const MAP_MAX_Z = 24;
 
-/* How far the camera must be off square before the container counts as
-   turned. Below this the transform is visually identity, so the
+/* The vertical budget is squashed by cos(tilt). Floored so a camera
+   tilted right over cannot drive the fit to nothing. */
+const MIN_CT = 0.35;
+
+/* How far a pinch travels. 1.0 is one-to-one with the fingers, which
+   feels sluggish on a plot you are trying to read a 12 m edge on; much
+   above 2.5 and it overshoots past the imagery in one gesture. */
+const PINCH_GAIN = 2.5;
+
+/* One press of the on-screen zoom, in zoom levels, and how long it
+   takes. A whole level per press is too coarse to land a plot where you
+   want it; much under half is a lot of pressing. */
+const ZOOM_STEP = 0.75;
+const ZOOM_STEP_MS = 220;
+
+/* Two taps closer together than this, on the same spot, are a
+   double-tap. 300 ms is the usual platform figure; the 24 px is what
+   stops a slow drag-and-release pair from counting. */
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_PX = 24;
+
+/* ── THE DIMENSION FIGURES ────────────────────────────────────────
+   Drawn in SCREEN space, not on the ground.
+
+   DimensionOverlay draws them into the lift sheet, in drawing metres,
+   which means they live on the ground plane and inherit the camera:
+   tilt the view to look at the raised block and the figures are
+   squashed by cos(tilt), skewed by the spin, and — because the sheet is
+   rasterised once at the window's pixel size — softened as well. That
+   is the tiny illegible text on the edges of plot 9, and no amount of
+   zooming fixes it, because everything grows together.
+
+   These are placed on the plot's edges but rendered upright at a FIXED
+   pixel size, by counter-transforming each label against the camera. A
+   12 pt figure stays a 12 pt figure at every tilt, heading and zoom.
+
+   OFF BY DEFAULT, and it should stay off unless you have a reason.
+   DimensionOverlay knows things this layer does not: it walks fillet
+   RUNS rather than raw edges, so a rounded corner gets one figure for
+   the whole arc instead of one per tiny segment; it draws the extension
+   lines and end ticks that make a figure a dimension rather than a
+   number floating near an edge; and it carries the plot's name and area
+   in the middle. Turning this on throws all of that away in exchange
+   for type that does not foreshorten.
+
+   If you do turn it on, the DimensionOverlay in the lift layer is
+   skipped automatically — otherwise every measurement prints twice,
+   once legibly and once not. */
+const SCREEN_DIMS = false;
+const DIM_FONT = 12;       // px on screen, whatever the camera is doing
+const DIM_OFFSET = 24;     // px clear of the edge it belongs to
+const DIM_MIN_EDGE = 34;   // px; shorter edges on screen get no figure
+const DIM_PAD = 120;       // px of room the label box needs past the walls
+
+/* How far the CSS camera must be off square before the container counts
+   as turned. Below this the transform is visually identity, so the
    oversizing can be dropped and the map left at its natural size. */
 const TURNED_EPS = 0.001;
 
+/* The same question for the native camera, in degrees. */
+const NATIVE_EPS_DEG = 0.5;
+
 /* Clear ground kept around the whole layout when framing it, in screen
-   px. Asymmetric because the logo header sits over the top of the map
-   and the action bar over the bottom: the plan is pushed clear of both
-   rather than left to hide underneath. The narrow set is for phones,
-   where side padding is the difference between a readable plan and a
-   postage stamp — measure your own header and bar and match these. */
-const FIT_PAD = { top: 110, right: 40, bottom: 50, left: 40 };
-const FIT_PAD_NARROW = { top: 76, right: 6, bottom: 64, left: 6 };
-const NARROW_PX = 600;
+   px — the ONLY padding left around the plan now that the parent no
+   longer re-frames.
+
+   The sides are as good as zero: nothing floats over them, so the plots
+   run out to the glass. Top and bottom are not decoration and should
+   not be zeroed without moving what sits there — the logo header (.mh,
+   whose height is --mh-block in Mapheader.css) floats over the top, and
+   the Filters button sits at bottom: 50px on tablet and phone. At zero,
+   the outermost plots hide underneath both.
+
+   Measure your own header and bar and match these. */
+const FIT_PAD = { top: 92, right: 4, bottom: 24, left: 4 };
+const FIT_PAD_TABLET = { top: 78, right: 3, bottom: 44, left: 3 };
+const FIT_PAD_NARROW = { top: 62, right: 2, bottom: 58, left: 2 };
+const NARROW_PX = 600;    // phone
+const TABLET_PX = 1024;   // tablet, and a narrow desktop window
+
+/* A resize on a phone is not one event: the address bar sliding away,
+   the on-screen keyboard, a sheet animating open and an orientation
+   change all arrive as bursts. Re-framing on each one is wasted work
+   and visibly jumpy, so they are collapsed into one call. */
+const RESIZE_SETTLE_MS = 120;
+
+/* Someone who has asked their device for less movement gets the
+   destination, not the journey. Read per call rather than cached: it can
+   be changed while the app is open, and on iOS it flips with Low Power
+   Mode. */
+const reducedMotion = () => {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (err) {
+    return false;
+  }
+};
+
+/* env() is ignored by browsers that don't know it, so the fallback has
+   to be inside the calc rather than relied on from the shorthand —
+   older WebKit only understands the two-argument form. */
+const safeArea = (side, base) => `calc(${base}px + env(safe-area-inset-${side}, 0px))`;
+
+/* A pick opens FLAT — straight down on the plot, north up, whatever the
+   view was doing before. That is the state the figures are drawn for:
+   no foreshortening, no skew, both axes at true scale, and the plot
+   square in the frame. The block and its walls are still there the
+   moment anyone drags to tilt.
+
+   Set false to keep the heading and tilt the user arrived with. */
+const TOP_VIEW_ON_PICK = true;
+
+const wrapDeg = (d) => ((d % 360) + 360) % 360;
+
+/* radians, folded to the short way round: 350° back to north is
+   forward 10°, not backward 350° */
+const wrapRad = (r) => {
+  const two = Math.PI * 2;
+  return (((r + Math.PI) % two) + two) % two - Math.PI;
+};
+
+/* The plan is the most expensive subtree on the page and it does not
+   care about the camera, so it is held still while the view turns. Its
+   props must stay referentially stable for this to bite — see the
+   useCallback on onPick below. */
+const PlanContentMemo = React.memo(PlanContent);
 
 /**
  * Map + plan. The map owns pan and zoom; the plan is one div riding an
@@ -97,29 +267,27 @@ const NARROW_PX = 600;
  * finish sinking before the new one is allowed to rise, or the block
  * appears to teleport across the layout.
  *
- * ROTATING THE WHOLE LAYOUT, with nothing raised, is a gesture rather
- * than a mode: two fingers on a touch screen, shift-drag or right-drag
- * on a desktop. It cannot share the one-finger drag, because the map
- * already owns that for panning and one gesture cannot mean both. Finger
- * count is the split every map app uses, so nobody has to be told.
+ * WITH A PLOT RAISED the whole surface orbits on a plain drag, turning
+ * the map CONTAINER, which has two consequences, both handled below:
+ * the container has to be bigger than the viewport or its corners swing
+ * into view, and Google's own pointer maths doesn't know about the
+ * transform — so dragging and wheel zoom are taken over for the
+ * duration.
  *
- * With a plot raised the whole surface orbits on a plain drag, as
- * before — there is nothing else the gesture could mean once the layout
- * is dimmed behind a single lit plot.
+ * WITH NOTHING RAISED the map's own camera turns instead: two fingers
+ * on touch, drag on a desktop. Full 360° at any zoom, and no container
+ * oversizing, so no padding.
  *
- * Either way the camera turns the map CONTAINER, which has two
- * consequences, both handled below: the container has to be bigger than
- * the viewport or its corners swing into view, and Google's own pointer
- * maths doesn't know about the transform — so dragging and wheel zoom
- * are taken over for the duration.
+ * NOTHING IN THE HOT PATH CALLS setState. A turn, a rise and a flight
+ * all run through overlayRef.draw() and direct DOM writes; React is
+ * only re-rendered when the gesture ends or the drawing window actually
+ * moves. That is what keeps the animation smooth — a setState per frame
+ * was the flicker.
  *
- * A pick FLIES the camera in: the chosen plot is brought to the middle
- * of the view and closed in on until the plot and the dimension figures
- * around it fill the screen. See flyTo.
- *
- * The OPENING view is a fit to the PLOTS — see fitPlan. Not a fixed
- * zoom, which frames a laptop and crops a phone, and not the drawing's
- * own bounds, which include margin the customer did not come to see.
+ * A pick FLIES the camera in — see flyTo. The OPENING view is a fit to
+ * the PLOTS — see fitPlan. Not a fixed zoom, which frames a laptop and
+ * crops a phone, and not the drawing's own bounds, which include margin
+ * the customer did not come to see.
  *
  * FILTERS live here rather than in App because everything they need —
  * the layout, and the match set the plan is already drawn against — is
@@ -127,7 +295,7 @@ const NARROW_PX = 600;
  * down, so the toolbar search and the panel stack instead of fighting.
  */
 export default function PlanMap({
-  layout, selected, onSelect, matches, status, mapRef, onReady,
+  layout, selected, onSelect, matches, status, mapRef, fitRef, onReady,
   showNumbers, setShowNumbers, showStatus, setShowStatus, reserve,
 }) {
   const viewRef = useRef(null);
@@ -137,14 +305,66 @@ export default function PlanMap({
   const riseRef = useRef(0);
   const drawRef = useRef(() => {});
   const dragRef = useRef(null);
-  const pinchRef = useRef(null);
+  const pinchRef = useRef(new Map());
+  const pinchStartRef = useRef(null);
   const wheelRef = useRef(0);
   const flyRef = useRef(0);
   const winRef = useRef(null);
 
+  /* the wall and dimension SVGs, written to directly rather than
+     re-rendered — see paintWalls / paintDims */
+  const wallSvgRef = useRef(null);
+  const dimSvgRef = useRef(null);
+
+  /* true only while a flight is in the air — see the draw window */
+  const flyingRef = useRef(false);
+
+  /* which plot the camera has already flown to, so a late `reserve`
+     re-aims instead of starting the whole flight again */
+  const flownRef = useRef(null);
+
+  /* The CSS tilt the current frame was computed for. Tilting squashes
+     the view, so the plot shrinks; when the gesture ends this is what
+     tells refitPick how much of the frame has been given away. */
+  const framedTiltRef = useRef(0);
+
+  /* Set the moment the user pinches or wheels. From then on the plot is
+     framed the way THEY left it — no automatic re-fit is allowed to
+     take a zoom they chose deliberately, which is the whole point of
+     zooming in to read a dimension. Cleared on the next pick. */
+  const manualZoomRef = useRef(false);
+
+  /* the last tap that landed on the orbit surface, for double-tap */
+  const tapRef = useRef(null);
+
+  /* the CSS camera levelling itself out on a pick */
+  const levelRef = useRef(0);
+
+  /* ── TOP VIEW, HELD ──────────────────────────────────────────────
+     Set on every new pick, cleared the moment the user actually turns
+     the view with their own hand.
+
+     While it is set the CSS camera is FORCED square on every frame, in
+     the draw callback, rather than merely being animated to square
+     once. That is deliberate: usePlanCamera applies its own tilt and
+     its own idle orbit, and levelling once only wins until its next
+     frame — which is why a pick kept sliding into a three-quarter view
+     on its own. Zeroing per frame is the only version that cannot be
+     overwritten by a hook this file does not own.
+
+     It costs nothing while it holds: two assignments per frame, and the
+     values are the ones the frame would use anyway. */
+  const topLockRef = useRef(false);
+
+  /* the native camera's own drag, two-finger gesture and auto-spin */
+  const nativeDragRef = useRef(null);
+  const nativeRafRef = useRef(0);
+  const nativeTouchRef = useRef(0);
+  const natPtrs = useRef(new Map());
+  const natGesture = useRef(null);
+
   const [pad, setPad] = useState({ x: 0, y: 0 });
   const [hover, setHover] = useState(null);
-  const [walls, setWalls] = useState(null);
   const [map, setMap] = useState(null);
   const [shown, setShown] = useState(null);
   const [win, setWin] = useState(() => ({ ...layout.bounds, s: 1 }));
@@ -153,12 +373,18 @@ export default function PlanMap({
   const [draft, setDraft] = useState(EMPTY_FILTERS);
   const [filterHits, setFilterHits] = useState(null);
 
-  /* True once the camera is off square, whether by gesture or by a
-     pick. It drives the container oversizing and whether the reset
-     control is offered — a free rotation with no way back to north
-     would be a trap. State, not a ref, because the render has to react
-     to it; the camera itself stays in camRef and is read per frame. */
+  /* True once the CSS camera is off square. It drives the container
+     oversizing and whether the reset control is offered — a rotation
+     with no way back to north would be a trap. State, not a ref,
+     because the render has to react to it; the camera itself stays in
+     camRef and is read per frame. */
   const [turned, setTurned] = useState(false);
+
+  /* The same for the native camera, which is the one that moves while
+     nothing is picked. Deliberately kept apart from `turned`: this one
+     must NOT inflate the container, because nothing is transformed. */
+  const [nativeTurned, setNativeTurned] = useState(false);
+  const [nativeSpin, setNativeSpin] = useState(false);
 
   /* The two view switches. App owns them when it passes setters down —
      then the toolbar and these toggles stay in step. When it doesn't,
@@ -210,27 +436,164 @@ export default function PlanMap({
     if (hits && selRef.current && !hits.has(selRef.current)) onSelect(null);
   }, [onSelect]);
 
-  /* Called after any camera change. Cheap, and it keeps `turned` from
-     drifting out of step with camRef, which is the thing that actually
-     moves. */
+  /* Called after any CSS camera change. Cheap, and it keeps `turned`
+     from drifting out of step with camRef, which is the thing that
+     actually moves. Called at the END of a gesture, never per frame. */
   const syncTurned = useCallback(() => {
     const c = camRef.current;
     const off = Math.abs(c.spin) > TURNED_EPS || c.tilt > TURNED_EPS;
     setTurned((v) => (v === off ? v : off));
   }, [camRef]);
 
+  /* The native camera is moved by Google's built-in gestures too, not
+     only by the handlers below, so this is read off the map rather than
+     off any local copy. */
+  const syncNative = useCallback(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    const h = wrapDeg(m.getHeading() || 0);
+    const off = Math.min(h, 360 - h) > NATIVE_EPS_DEG
+      || (m.getTilt() || 0) > NATIVE_EPS_DEG;
+    setNativeTurned((v) => (v === off ? v : off));
+  }, [mapRef]);
+
   /* ---------------------------------------------------------------
-     Framing the layout. The opening view, and what a "fit" control
-     returns to.
+     The raised block's walls, painted by hand.
+
+     This used to be setWalls({ box, faces }) from inside the draw
+     callback — a React state write on every animation frame of every
+     orbit, rise and flight, each one re-rendering this whole component
+     and the plan SVG underneath it. That is the flicker and the lag.
+
+     One SVG node is created once and its paths are mutated in place.
+     Nodes are reused across frames because a plot's edge count doesn't
+     change while it is up.
+  --------------------------------------------------------------- */
+  const paintWalls = useCallback((box, faces) => {
+    const svg = wallSvgRef.current;
+    if (!svg) return;
+
+    if (!box || !faces || !faces.length) {
+      svg.style.display = 'none';
+      return;
+    }
+
+    svg.style.display = 'block';
+    svg.style.left = `${box.x}px`;
+    svg.style.top = `${box.y}px`;
+    svg.setAttribute('width', box.w);
+    svg.setAttribute('height', box.h);
+    svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
+
+    while (svg.childNodes.length > faces.length) {
+      svg.removeChild(svg.lastChild);
+    }
+    for (let i = 0; i < faces.length; i += 1) {
+      let p = svg.childNodes[i];
+      if (!p) {
+        p = document.createElementNS(SVG_NS, 'path');
+        p.setAttribute('fill', WALL_FILL);
+        p.setAttribute('stroke', WALL_EDGE);
+        p.setAttribute('stroke-width', '1');
+        svg.appendChild(p);
+      }
+      p.setAttribute('d', faces[i].d);
+    }
+  }, []);
+
+  /* The figures. Same imperative treatment as the walls, and for the
+     same reason: this runs on every frame of every turn.
+
+     Each label carries its own counter-transform. The container maps to
+     the screen as scaleY(cos tilt) ∘ rotate(spin), so undoing it in the
+     label's own coordinates — rotate(-spin) then scale(1, 1/cos tilt) —
+     lands the text upright and unsquashed however the view is turned.
+
+     The box behind each figure is not decoration: satellite imagery
+     under a figure can be any colour, and white-on-pale is unreadable
+     on the one plot the customer is actually looking at. */
+  const paintDims = useCallback((box, items) => {
+    const svg = dimSvgRef.current;
+    if (!svg) return;
+
+    if (!box || !items || !items.length) {
+      svg.style.display = 'none';
+      return;
+    }
+
+    svg.style.display = 'block';
+    svg.style.left = `${box.x}px`;
+    svg.style.top = `${box.y}px`;
+    svg.setAttribute('width', box.w);
+    svg.setAttribute('height', box.h);
+    svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
+
+    while (svg.childNodes.length > items.length) {
+      svg.removeChild(svg.lastChild);
+    }
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i];
+      let g = svg.childNodes[i];
+      if (!g) {
+        g = document.createElementNS(SVG_NS, 'g');
+        const r = document.createElementNS(SVG_NS, 'rect');
+        r.setAttribute('rx', '7');
+        r.setAttribute('fill', CANVAS);
+        r.setAttribute('fill-opacity', '0.92');
+        r.setAttribute('stroke', HAIR);
+        r.setAttribute('stroke-width', '1');
+        const t = document.createElementNS(SVG_NS, 'text');
+        t.setAttribute('text-anchor', 'middle');
+        /* dy, not dominant-baseline: WebKit ignored the latter on <text>
+           for years and still disagrees with Blink on where 'central'
+           sits. This is the same trick DimensionOverlay uses. */
+        t.setAttribute('dy', '0.35em');
+        t.setAttribute('fill', '#E7E1D5');
+        t.setAttribute('font-family', MONO);
+        t.setAttribute('font-size', String(DIM_FONT));
+        t.setAttribute('font-weight', '600');
+        g.appendChild(r);
+        g.appendChild(t);
+        svg.appendChild(g);
+      }
+      const r = g.childNodes[0];
+      const t = g.childNodes[1];
+
+      g.setAttribute(
+        'transform',
+        `translate(${it.x} ${it.y}) rotate(${it.rot}) scale(1 ${it.sy})`,
+      );
+      if (t.textContent !== it.label) t.textContent = it.label;
+
+      /* MONO, so a character is a known fraction of the em and the box
+         can be sized without measuring — measuring would force a
+         layout on every frame. */
+      const w = it.label.length * DIM_FONT * 0.62 + 14;
+      const h = DIM_FONT + 10;
+      r.setAttribute('x', String(-w / 2));
+      r.setAttribute('y', String(-h / 2));
+      r.setAttribute('width', String(w));
+      r.setAttribute('height', String(h));
+    }
+  }, []);
+
+  /* ---------------------------------------------------------------
+     Framing the layout. The opening view, and what the toolbar's fit
+     button returns to.
 
      A FIT, not a fixed zoom: one zoom number frames a laptop and crops
      a phone, and is wrong again on a tablet in portrait.
 
-     It fits the PLOTS, not layout.bounds. The drawing's extent runs
-     well past the last plot on most CAD exports — sheet border, title
-     block, surrounding roads and open ground. Framing that leaves the
-     plots as a small island with empty imagery all around, which is
-     worst exactly where there is no screen to spare.
+     It fits the PLOTS, not layout.bounds and not layout.features. The
+     drawing's extent runs well past the last plot on most CAD exports —
+     sheet border, title block, surrounding roads and open ground.
+     Framing that leaves the plots as a small island with empty imagery
+     all around, which is worst exactly where there is no screen to
+     spare.
+
+     Heading and tilt are levelled first: fitBounds on a turned camera
+     fits the bounds as seen from that heading, which is not the frame
+     anyone means by "show me the whole layout".
   --------------------------------------------------------------- */
   const fitPlan = useCallback((target) => {
     const m = target || mapRef.current;
@@ -257,17 +620,30 @@ export default function PlanMap({
       });
     }
 
-    m.fitBounds(b, el.clientWidth < NARROW_PX ? FIT_PAD_NARROW : FIT_PAD);
+    if (typeof m.moveCamera === 'function') m.moveCamera({ heading: 0, tilt: 0 });
+    const w = el.clientWidth;
+    let padding = FIT_PAD;
+    if (w < NARROW_PX) padding = FIT_PAD_NARROW;
+    else if (w < TABLET_PX) padding = FIT_PAD_TABLET;
+    m.fitBounds(b, padding);
   }, [maps, mapRef, plots, bounds, toLL]);
+
+  /* Handed back to the parent so the toolbar's fit button calls THIS
+     rather than writing its own fitBounds. */
+  useEffect(() => {
+    if (!fitRef) return undefined;
+    fitRef.current = fitPlan;
+    return () => { fitRef.current = null; };
+  }, [fitRef, fitPlan]);
 
   /* ---------------------------------------------------------------
      Framing a pick — the close-up.
 
      Picking a plot brings it to you rather than leaving you to go find
-     it, and closes in far enough that the dimension figures are
-     readable. Centre is the plot's bounding box, not its centroid: an
-     L-shaped plot's centroid can sit outside the plot, and the box is
-     what actually has to fit on screen.
+     it, and closes in until the plot fills the frame with its dimension
+     figures legible around it. Centre is the plot's bounding box, not
+     its centroid: an L-shaped plot's centroid can sit outside the plot,
+     and the box is what actually has to fit on screen.
 
      The camera turns the CONTAINER about its own centre, and the
      container is padded symmetrically around the viewport, so the map
@@ -275,32 +651,38 @@ export default function PlanMap({
      That is why this can be a plain setCenter and doesn't have to undo
      the spin.
 
-     Zoom is a real fit, not a nudge: what has to be on screen is the
-     plot's box PLUS the gutter its dimension figures live in, and the
-     camera goes as close as that allows — then CLOSE_BOOST pushes in
-     past it. Fitting each axis separately rather than to the short side
-     is what makes the close-up close: a wide plot fills the width
-     instead of being framed for a height it doesn't have.
+     Zoom is a real fit, then a deliberate push past it. What has to be
+     on screen is the plot's box PLUS the gutter its figures live in;
+     the axes are fitted separately rather than to the short side, which
+     is what lets a wide plot fill the width instead of being framed for
+     a height it doesn't have.
 
-     Two corrections on the vertical. The budget is short by
-     cos(MAX_TILT), because the tilted container squashes the ground in
-     Y — the same factor the lift and the pad calculation use. And the
-     block's reach, LIFT_H·sin(MAX_TILT) metres' worth of screen, is
-     spent entirely upward, so it is reserved in the fit and then half
-     of it is given back as a downward bias on the aim point.
-
-     One thing worth knowing if this ever seems not to move: the whole
-     flight is skipped when the camera is already there (`still`). That
-     is right for a re-pick of the same plot, but it means a fit that
-     computes a zoom close to the current one produces no visible
-     motion — which reads as "it didn't work" rather than "there was
-     nothing to do".
+     THE TILT IS READ, NOT ASSUMED. Both vertical corrections — the
+     cos(tilt) squash and the raised block's reach — are computed at the
+     camera's CURRENT tilt, every time, by pickFrame below. A pick lands
+     on a flat camera, where both are zero, so the plot fills the frame
+     instead of being framed for headroom nothing is using. Tilt the
+     view afterwards and refitPick closes the difference, so the plot
+     keeps filling the frame instead of shrinking toward the horizon.
   --------------------------------------------------------------- */
-  const flyTo = useCallback((name) => {
+  /* The frame a pick deserves, AT THE CAMERA'S CURRENT TILT: the zoom
+     that fits the plot, and the centre that puts it in the middle of
+     what is actually VISIBLE once the sheet or panel has taken its
+     share.
+
+     Split out of flyTo because three other things need the same
+     answer: a re-aim when a panel opens, a re-fit when the view is
+     tilted, and every pinch and wheel notch — those anchor on the PLOT
+     rather than on the map centre, which is why zooming in to read the
+     dimensions no longer slides the plot off the edge.
+
+     `zForce` asks the other question: not "how close should this be"
+     but "where should the centre sit IF the zoom were this". */
+  const pickFrame = useCallback((name, zForce, flat) => {
     const m = mapRef.current;
     const el = viewRef.current;
     const plot = name && layout.byName.get(name);
-    if (!m || !el || !plot || !plot.pts.length) return;
+    if (!m || !el || !plot || !plot.pts.length) return null;
 
     const xs = plot.pts.map((p) => p[0]);
     const ys = plot.pts.map((p) => p[1]);
@@ -308,10 +690,23 @@ export default function PlanMap({
     const y0 = Math.min(...ys); const y1 = Math.max(...ys);
     const to = toLL((x0 + x1) / 2, (y0 + y1) / 2);
     const world = 156543.03392 * Math.cos((to.lat * Math.PI) / 180);
-    const lift = LIFT_H * Math.sin(MAX_TILT);      // the block's reach, in ground metres
+
+    /* the screen this pick actually has, and how hard to push in on it */
+    const w = el.clientWidth;
+    let boost = CLOSE_BOOST;
+    if (w < NARROW_PX) boost = CLOSE_BOOST_PHONE;
+    else if (w < TABLET_PX) boost = CLOSE_BOOST_TABLET;
+
+    /* The tilt the camera is AT — not the tilt it may one day reach.
+       Tilting squashes the container in Y and spends the block's reach,
+       so the fit is a different number at 0° and at 45°. Read it every
+       time; refitPick below is what acts on the difference. */
+    const tiltNow = flat ? 0 : camRef.current.tilt;
+    const ct = Math.max(Math.cos(tiltNow), MIN_CT);
+    const lift = LIFT_H * Math.sin(tiltNow);   // the block's reach, in ground metres
 
     const needW = (x1 - x0 + GUTTER * 2) * SLACK;
-    const needH = (y1 - y0 + GUTTER * 2) * SLACK + lift;
+    const needH = (y1 - y0 + GUTTER * 2) * SLACK + lift * LIFT_RESERVE;
 
     /* The reserve is honoured, but never allowed to starve the fit: a
        panel wider than the viewport would otherwise drive availW toward
@@ -322,31 +717,30 @@ export default function PlanMap({
       160,
     );
     const availH = Math.max(
-      (el.clientHeight - Math.min(inset.top + inset.bottom, el.clientHeight * 0.5))
-        * Math.cos(MAX_TILT),
+      (el.clientHeight - Math.min(inset.top + inset.bottom, el.clientHeight * 0.5)) * ct,
       160,
     );
 
     /* metres per pixel wanted, then divided down to push in past the
        bare fit — see CLOSE_BOOST */
-    const mpp = Math.max(needW / availW, needH / availH) / CLOSE_BOOST;
-    const z1 = clamp(Math.log2(world / mpp), FLY_MIN_Z, FLY_MAX_Z);
+    const mpp = Math.max(needW / availW, needH / availH) / boost;
+    const fit = clamp(Math.log2(world / mpp), FLY_MIN_Z, FLY_MAX_Z);
+    const z = zForce == null ? fit : clamp(zForce, FLY_MIN_Z, MAP_MAX_Z);
 
     /* Aim at the middle of what is actually VISIBLE, not the middle of
-       the viewport, and sit low by half the lift so the risen block
-       lands centred. Both are offsets the CENTRE must make in screen
-       px; the container is rotated by spin and squashed in Y by
+       the viewport, and sit low by half the reserved lift so the risen
+       block lands centred. Both are offsets the CENTRE must make in
+       screen px; the container is rotated by spin and squashed in Y by
        cos(tilt), so they are run back through that transform to become
        container px, then divided by the scale to become world units. */
     let aim = to;
     const proj = m.getProjection();
     if (proj) {
-      const scale = 2 ** z1;
-      const risePx = (lift * scale) / world;
+      const scale = 2 ** z;
+      const risePx = (lift * LIFT_RESERVE * scale) / world;
       const sx = (inset.right - inset.left) / 2;
       const sy = (inset.bottom - inset.top) / 2 - risePx * LIFT_BIAS;
-      const s = camRef.current.spin;
-      const ct = Math.cos(MAX_TILT);
+      const s = flat ? 0 : camRef.current.spin;
       const cx = sx * Math.cos(s) + (sy / ct) * Math.sin(s);
       const cy = (sy / ct) * Math.cos(s) - sx * Math.sin(s);
       const p = proj.fromLatLngToPoint(new maps.LatLng(to.lat, to.lng));
@@ -356,13 +750,50 @@ export default function PlanMap({
       if (q) aim = { lat: q.lat(), lng: q.lng() };
     }
 
+    return { z, fit, aim, tilt: tiltNow };
+  }, [layout, toLL, mapRef, maps, camRef, inset]);
+
+  /* ---------------------------------------------------------------
+     Flying in on a pick.
+
+     Everything about WHERE is pickFrame's; this is only the glide, and
+     the unwinding of the native camera — the CSS camera takes the view
+     from here, and if the map were still turned underneath the two
+     rotations would add.
+
+     `ms` is short for a re-aim: the same plot, a panel having just
+     opened underneath it. A full FLY_MS there reads as a second
+     flight.
+
+     One thing worth knowing if this ever seems not to move: the whole
+     flight is skipped when the camera is already there (`still`).
+  --------------------------------------------------------------- */
+  const flyTo = useCallback((name, msIn = FLY_MS, flat = false) => {
+    const ms = reducedMotion() ? 1 : msIn;
+    const m = mapRef.current;
+    const f = pickFrame(name, undefined, flat);
+    if (!m || !f) return;
+
+    const z1 = f.z;
+    const { aim } = f;
+
     const c0 = m.getCenter();
     if (!c0) return;
     const a = { lat: c0.lat(), lng: c0.lng() };
     const z0 = m.getZoom();
+
+    /* where the native camera has to be unwound from */
+    const h0 = wrapDeg(m.getHeading() || 0);
+    const hDelta = h0 > 180 ? 360 - h0 : -h0;      // the short way back to north
+    const nt0 = m.getTilt() || 0;
+
+    /* the tilt this frame was computed for — refitPick compares */
+    framedTiltRef.current = f.tilt;
+
     const still = Math.abs(a.lat - aim.lat) < 1e-7
       && Math.abs(a.lng - aim.lng) < 1e-7
-      && Math.abs(z1 - z0) < 0.05;
+      && Math.abs(z1 - z0) < 0.05
+      && Math.abs(hDelta) < 0.5 && nt0 < 0.5;
     if (still) return;
 
     /* Raster hybrid rounds the zoom unless this is on, and a rounded
@@ -373,33 +804,403 @@ export default function PlanMap({
     m.setOptions({ isFractionalZoomEnabled: true, maxZoom: MAP_MAX_Z });
 
     cancelAnimationFrame(flyRef.current);
+    flyingRef.current = true;
     const t0 = performance.now();
     const step = (now) => {
-      const t = easeOut(Math.min(1, (now - t0) / FLY_MS));
+      const t = easeOut(Math.min(1, (now - t0) / ms));
       const center = {
         lat: a.lat + (aim.lat - a.lat) * t,
         lng: a.lng + (aim.lng - a.lng) * t,
       };
       const z = z0 + (z1 - z0) * t;
-      if (typeof m.moveCamera === 'function') m.moveCamera({ center, zoom: z });
-      else { m.setZoom(z); m.setCenter(center); }
-      if (t < 1) flyRef.current = requestAnimationFrame(step);
+      if (typeof m.moveCamera === 'function') {
+        m.moveCamera({
+          center,
+          zoom: z,
+          heading: wrapDeg(h0 + hDelta * t),
+          tilt: nt0 * (1 - t),
+        });
+      } else { m.setZoom(z); m.setCenter(center); }
+      if (t < 1) {
+        flyRef.current = requestAnimationFrame(step);
+      } else {
+        /* The drawing window was held still for the whole flight so it
+           couldn't re-render mid-glide. Let it settle at the zoom it
+           actually landed on. */
+        flyingRef.current = false;
+        if (overlayRef.current) overlayRef.current.draw();
+      }
     };
     flyRef.current = requestAnimationFrame(step);
-  }, [layout, toLL, mapRef, maps, camRef, inset]);
+  }, [mapRef, pickFrame, overlayRef]);
 
   /* the flight is the user's the moment they touch anything */
-  const stopFly = useCallback(() => cancelAnimationFrame(flyRef.current), []);
+  const stopFly = useCallback(() => {
+    cancelAnimationFrame(flyRef.current);
+    flyingRef.current = false;
+  }, []);
+
+  /* ---------------------------------------------------------------
+     Zooming ABOUT THE PLOT.
+
+     moveCamera({ zoom }) holds the map CENTRE still, and the centre is
+     not the plot: it is offset upward by whatever the bottom sheet
+     claims. So zooming in pushed the plot toward the top of the screen
+     and eventually off it — which is why zooming in to read a dimension
+     never worked. Re-aim at the plot on every step and it stays put
+     under the fingers.
+
+     This is the ONLY thing that should change the zoom while a plot is
+     raised: pinch, wheel and refit all come through here.
+  --------------------------------------------------------------- */
+  const zoomAtPlot = useCallback((z) => {
+    const m = mapRef.current;
+    if (!m) return;
+    const f = pickFrame(selRef.current, z);
+    if (!f) {
+      if (typeof m.moveCamera === 'function') m.moveCamera({ zoom: clamp(z, FLY_MIN_Z, MAP_MAX_Z) });
+      else m.setZoom(clamp(z, FLY_MIN_Z, MAP_MAX_Z));
+      return;
+    }
+    if (typeof m.moveCamera === 'function') m.moveCamera({ zoom: f.z, center: f.aim });
+    else { m.setZoom(f.z); m.setCenter(f.aim); }
+  }, [mapRef, pickFrame]);
+
+  /* ---------------------------------------------------------------
+     Re-fitting after a tilt.
+
+     A pick is framed flat, and then the user tilts the view to see the
+     block stand up — which squashes the ground in Y and spends the
+     block's reach, so the plot ends up smaller than it was framed to
+     be. That is the small floating plot with the dimensions too fine to
+     read.
+
+     So when a turn ENDS, re-fit to the tilt they finished on. Short and
+     eased, so it reads as the view settling rather than a second
+     flight. Skipped entirely once they have pinched: a zoom someone
+     chose deliberately is never taken back.
+  --------------------------------------------------------------- */
+  const refitPick = useCallback((msIn = REFIT_MS, force = false) => {
+    const ms = reducedMotion() ? 1 : msIn;
+    const m = mapRef.current;
+    if (!m || !selRef.current) return;
+    if (!force && manualZoomRef.current) return;
+
+    const f = pickFrame(selRef.current);
+    if (!f) return;
+
+    /* nothing meaningful has changed since this frame was set */
+    if (!force && Math.abs(f.tilt - framedTiltRef.current) < 0.02) return;
+    framedTiltRef.current = f.tilt;
+
+    const c0 = m.getCenter();
+    const z0 = m.getZoom();
+    if (!c0) return;
+    const a = { lat: c0.lat(), lng: c0.lng() };
+    if (!force && Math.abs(f.z - z0) < 0.04) return;
+
+    cancelAnimationFrame(flyRef.current);
+    flyingRef.current = true;
+    const t0 = performance.now();
+    const step = (now) => {
+      const t = easeOut(Math.min(1, (now - t0) / ms));
+      const center = {
+        lat: a.lat + (f.aim.lat - a.lat) * t,
+        lng: a.lng + (f.aim.lng - a.lng) * t,
+      };
+      const z = z0 + (f.z - z0) * t;
+      if (typeof m.moveCamera === 'function') m.moveCamera({ center, zoom: z });
+      else { m.setZoom(z); m.setCenter(center); }
+      if (t < 1) {
+        flyRef.current = requestAnimationFrame(step);
+      } else {
+        flyingRef.current = false;
+        if (overlayRef.current) overlayRef.current.draw();
+      }
+    };
+    flyRef.current = requestAnimationFrame(step);
+  }, [mapRef, pickFrame, overlayRef]);
+
+  /* ---------------------------------------------------------------
+     Back to square — the CSS camera only.
+
+     Eased over the same span as the flight, so the view levels out as
+     the camera closes in and the two read as one movement rather than a
+     snap followed by a glide. The heading takes the short way round:
+     from 350° that is forward 10°.
+
+     If a picked plot still opens tilted after this, the tilt is being
+     applied by usePlanCamera on selection — zero its default there
+     too, or this will spend the whole flight undoing it.
+  --------------------------------------------------------------- */
+  const levelCam = useCallback((msIn = FLY_MS) => {
+    const ms = reducedMotion() ? 1 : msIn;
+    const c = camRef.current;
+    setSpin(false);
+    cancelAnimationFrame(levelRef.current);
+
+    /* fold the accumulated heading down to its short equivalent first,
+       so a view that has been round three times doesn't unwind three
+       times on the way back */
+    const s0 = wrapRad(c.spin);
+    const t0 = c.tilt;
+    c.spin = s0;
+
+    if (Math.abs(s0) < TURNED_EPS && t0 < TURNED_EPS) {
+      framedTiltRef.current = 0;
+      return;
+    }
+
+    const start = performance.now();
+    const step = (now) => {
+      const e = easeOut(Math.min(1, (now - start) / ms));
+      c.spin = s0 * (1 - e);
+      c.tilt = t0 * (1 - e);
+      if (overlayRef.current) overlayRef.current.draw();
+      if (e < 1) {
+        levelRef.current = requestAnimationFrame(step);
+      } else {
+        c.spin = 0;
+        c.tilt = 0;
+        framedTiltRef.current = 0;
+        if (overlayRef.current) overlayRef.current.draw();
+        syncTurned();
+        bump((n) => n + 1);
+      }
+    };
+    levelRef.current = requestAnimationFrame(step);
+  }, [camRef, overlayRef, setSpin, syncTurned, bump]);
+
+  useEffect(() => () => cancelAnimationFrame(levelRef.current), []);
+
+  /* One press of + or −, or one double-tap. Eased rather than jumped,
+     because a step change in zoom on satellite imagery reads as a
+     glitch. Goes through zoomAtPlot, so the plot does not drift. */
+  const nudgeZoom = useCallback((d) => {
+    const m = mapRef.current;
+    if (!m || !selRef.current) return;
+    stopFly();
+    manualZoomRef.current = true;
+    const z0 = m.getZoom() || 18;
+    const z1 = clamp(z0 + d, FLY_MIN_Z, MAP_MAX_Z);
+    if (Math.abs(z1 - z0) < 0.01) return;
+
+    const ms = reducedMotion() ? 1 : ZOOM_STEP_MS;
+    flyingRef.current = true;
+    const t0 = performance.now();
+    const step = (now) => {
+      const t = easeOut(Math.min(1, (now - t0) / ms));
+      zoomAtPlot(z0 + (z1 - z0) * t);
+      if (t < 1) {
+        flyRef.current = requestAnimationFrame(step);
+      } else {
+        flyingRef.current = false;
+        if (overlayRef.current) overlayRef.current.draw();
+      }
+    };
+    flyRef.current = requestAnimationFrame(step);
+  }, [mapRef, stopFly, zoomAtPlot, overlayRef]);
+
+  /* Back to the frame the pick was given, whatever the user has done to
+     it since. Hands the frame back to the code, so tilting starts
+     re-fitting again. */
+  const fitPick = useCallback(() => {
+    stopFly();
+    manualZoomRef.current = false;
+    refitPick(REFIT_MS, true);
+  }, [stopFly, refitPick]);
+
+  /* ---------------------------------------------------------------
+     The pinch, listened for on the DOCUMENT.
+
+     It used to hang off the orbit surface, which only ever sees a
+     gesture if BOTH fingers land on it — and on a phone the quotation
+     sheet covers the bottom third of the screen, so most pinches put at
+     least one finger somewhere else and nothing happened at all. That
+     is the "it doesn't zoom" you are seeing.
+
+     Capture phase on the document sees every touch on the way DOWN,
+     before the sheet, the header or anything else can take it, so a
+     two-finger pinch ANYWHERE on the screen zooms the raised plot while
+     one-finger taps and scrolls inside the sheet carry on working
+     untouched.
+
+     `touchmove` is cancelled separately, non-passive, or the browser
+     zooms the whole page instead — and on iOS that leaves the map
+     behind at the old zoom while the document itself scales.
+
+     Only ever bound while a plot is raised.
+  --------------------------------------------------------------- */
+  useEffect(() => {
+    if (!selected) return undefined;
+
+    const pts = new Map();
+    let start = null;
+
+    const onDown = (e) => {
+      if (e.pointerType !== 'touch') return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        const [p, q] = [...pts.values()];
+        start = {
+          dist: Math.max(1, Math.hypot(q.x - p.x, q.y - p.y)),
+          zoom: mapRef.current?.getZoom?.() || 18,
+        };
+        stopFly();
+      }
+    };
+
+    const onMove = (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size < 2 || !start) return;
+      const [p, q] = [...pts.values()];
+      const dist = Math.max(1, Math.hypot(q.x - p.x, q.y - p.y));
+      manualZoomRef.current = true;
+      zoomAtPlot(start.zoom + Math.log2(dist / start.dist) * PINCH_GAIN);
+      touched.current = Date.now();
+    };
+
+    const onUp = (e) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) start = null;
+    };
+
+    /* the browser's own page zoom, refused for the length of a pinch */
+    const onTouchMove = (e) => {
+      if (e.touches && e.touches.length >= 2 && e.cancelable) e.preventDefault();
+    };
+
+    /* Safari does NOT route its pinch through touchmove — it raises its
+       own gesturestart/gesturechange, and cancelling touchmove alone
+       leaves the page scaling while the map stays put, which is the
+       worst of both. Non-standard and WebKit-only; every other engine
+       simply never fires these. */
+    const onGesture = (e) => { if (e.cancelable) e.preventDefault(); };
+
+    const cap = { capture: true };
+    document.addEventListener('pointerdown', onDown, cap);
+    document.addEventListener('pointermove', onMove, cap);
+    document.addEventListener('pointerup', onUp, cap);
+    document.addEventListener('pointercancel', onUp, cap);
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    document.addEventListener('gesturestart', onGesture, { capture: true, passive: false });
+    document.addEventListener('gesturechange', onGesture, { capture: true, passive: false });
+
+    return () => {
+      document.removeEventListener('pointerdown', onDown, cap);
+      document.removeEventListener('pointermove', onMove, cap);
+      document.removeEventListener('pointerup', onUp, cap);
+      document.removeEventListener('pointercancel', onUp, cap);
+      document.removeEventListener('touchmove', onTouchMove, { capture: true });
+      document.removeEventListener('gesturestart', onGesture, { capture: true });
+      document.removeEventListener('gesturechange', onGesture, { capture: true });
+    };
+  }, [selected, mapRef, zoomAtPlot, stopFly, touched]);
 
   useEffect(() => { selRef.current = selected; }, [selected]);
   useEffect(() => { if (!selected) setSpin(false); }, [selected, setSpin]);
-  useEffect(() => { if (selected) flyTo(selected); }, [selected, flyTo]);
+
+  /* usePlanCamera starts its own idle orbit after a while. Zeroing the
+     camera per frame would fight that animation to a standstill rather
+     than stop it, so the flag itself is refused for as long as the top
+     view holds. Turn the view by hand and the orbit is available again,
+     because the lock is gone by then. */
+  useEffect(() => {
+    if (spin && topLockRef.current) setSpin(false);
+  }, [spin, setSpin]);
   useEffect(() => () => cancelAnimationFrame(flyRef.current), []);
 
-  /* A pick turns the camera by itself, and dropping the pick leaves
-     whatever heading the user finished on — so `turned` is re-read from
-     the camera on both edges rather than assumed. */
-  useEffect(() => { syncTurned(); }, [selected, syncTurned]);
+  /* A pick flies once. `reserve` usually arrives a beat later — the
+     panel or bottom sheet has to mount and measure first — and that
+     changes flyTo's identity, which used to restart the flight from
+     wherever the first one had got to. That restart is the stutter you
+     see on a phone. Same plot, second run: re-aim briefly instead. */
+  useEffect(() => {
+    if (!selected) {
+      flownRef.current = null;
+      manualZoomRef.current = false;
+      topLockRef.current = false;
+      return;
+    }
+    const reaim = flownRef.current === selected;
+    /* a NEW plot gets a fresh frame; the user's own zoom belonged to
+       the last one */
+    if (!reaim) manualZoomRef.current = false;
+    flownRef.current = selected;
+
+    /* Level and close in together. The fit is computed for where the
+       camera is GOING, not where it is — otherwise a pick made from a
+       tilted view is framed for headroom that is gone by the time the
+       flight lands, and the plot sits small.
+
+       A re-aim is not a new pick: the view is already flat and levelling
+       it again would fight whatever tilt the user has since chosen. */
+    if (!reaim && TOP_VIEW_ON_PICK) {
+      topLockRef.current = true;
+      levelCam(FLY_MS);
+    }
+    flyTo(selected, reaim ? REAIM_MS : FLY_MS, !reaim && TOP_VIEW_ON_PICK);
+  }, [selected, flyTo, levelCam]);
+
+  /* A pick turns the CSS camera by itself, and dropping the pick leaves
+     whatever heading the user finished on — so both flags are re-read
+     on each edge rather than assumed. The native camera is being
+     levelled by the flight, so it is given until the flight lands. */
+  useEffect(() => {
+    syncTurned();
+    if (selected) setNativeSpin(false);
+    const id = setTimeout(syncNative, FLY_MS + 60);
+    return () => clearTimeout(id);
+  }, [selected, syncTurned, syncNative]);
+
+  /* ── The 360, with nothing raised ────────────────────────────────
+     Heading climbs and wraps, so it goes round and round rather than
+     stopping at either end, at whatever zoom you are on. Because the
+     map turns about its own centre this circles whatever you have
+     centred. Hands the view back the moment anyone touches it and waits
+     out NATIVE_IDLE_MS before taking it again. */
+  useEffect(() => {
+    if (!nativeSpin || selected) {
+      cancelAnimationFrame(nativeRafRef.current);
+      return undefined;
+    }
+    let last = performance.now();
+    const step = (now) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      const m = mapRef.current;
+      if (m && typeof m.moveCamera === 'function'
+        && (!nativeTouchRef.current || now - nativeTouchRef.current > NATIVE_IDLE_MS)) {
+        m.moveCamera({ heading: wrapDeg((m.getHeading() || 0) + NATIVE_SPIN_DEG_PER_S * dt) });
+      }
+      nativeRafRef.current = requestAnimationFrame(step);
+    };
+    nativeRafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(nativeRafRef.current);
+  }, [nativeSpin, selected, mapRef]);
+
+  useEffect(() => () => cancelAnimationFrame(nativeRafRef.current), []);
+
+  /* Back to north and flat, the short way round — from 350° that is
+     forward 10°, not backward 350°. */
+  const nativeFaceNorth = useCallback(() => {
+    const m = mapRef.current;
+    if (!m || typeof m.moveCamera !== 'function') return;
+    setNativeSpin(false);
+    const h0 = wrapDeg(m.getHeading() || 0);
+    const t0 = m.getTilt() || 0;
+    const d = h0 > 180 ? 360 - h0 : -h0;
+    const start = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - start) / 500);
+      const e = easeOut(k);
+      m.moveCamera({ heading: wrapDeg(h0 + d * e), tilt: t0 * (1 - e) });
+      if (k < 1) requestAnimationFrame(step);
+      else syncNative();
+    };
+    requestAnimationFrame(step);
+  }, [mapRef, syncNative]);
 
   /* Back out to the whole layout when a plot is dismissed, so closing a
      plot returns you to where you can pick the next one instead of
@@ -410,24 +1211,65 @@ export default function PlanMap({
     fitPlan();
   }, [selected, map, fitPlan]);
 
-  /* Re-frame when the screen changes shape — a rotated phone otherwise
-     leaves half the layout off the edge. Only while nothing is picked:
-     re-framing under someone who has flown in on a plot would throw
-     away the view they are working in, and a phone's address bar
-     sliding away counts as a resize. */
+  /* ---------------------------------------------------------------
+     Watching the element, not the window.
+
+     `window.resize` misses most of what actually changes this map's
+     shape: a details panel opening beside it, a sheet animating up, the
+     parent laying out after fonts land, a desktop sidebar collapsing —
+     the window never changes size for any of them, and the map is left
+     framed for a box it no longer occupies.
+
+     ResizeObserver watches the box itself. visualViewport catches the
+     one the observer misses on a phone: the address bar sliding away
+     and the on-screen keyboard, which change what you can SEE without
+     changing any element's size.
+
+     All of it collapses into one debounced call, because a sheet
+     animating open fires this thirty times in half a second.
+  --------------------------------------------------------------- */
   useEffect(() => {
-    const onResize = () => { if (!selRef.current) fitPlan(); };
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
+    const el = viewRef.current;
+    if (!el) return undefined;
+
+    let timer = 0;
+    const settle = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        /* Only while nothing is picked: re-framing under someone who has
+           flown in on a plot would throw away the view they are working
+           in, and a phone's address bar sliding away counts as a
+           resize. */
+        if (!selRef.current) fitPlan();
+      }, RESIZE_SETTLE_MS);
+    };
+
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(settle);
+      ro.observe(el);
+    }
+    window.addEventListener('resize', settle);
+    window.addEventListener('orientationchange', settle);
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener('resize', settle);
+
     return () => {
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
+      clearTimeout(timer);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', settle);
+      window.removeEventListener('orientationchange', settle);
+      if (vv) vv.removeEventListener('resize', settle);
     };
   }, [fitPlan]);
 
   /* Sink whatever is up, swap the drawn plot, raise the new one. Height
      lives in a ref because it is read inside the draw callback, which
-     runs per frame and must not depend on React having re-rendered. */
+     runs per frame and must not depend on React having re-rendered.
+
+     The ramp draws and nothing else — no bump per frame. The walls it
+     is animating are painted by hand now, so React has nothing to do
+     until the block has finished moving. */
   useEffect(() => {
     if (selected === shownRef.current) return undefined;
     let raf = 0;
@@ -438,9 +1280,11 @@ export default function PlanMap({
         const t = Math.min(1, (now - t0) / ms);
         riseRef.current = from + (to - from) * easeOut(t);
         if (overlayRef.current) overlayRef.current.draw();
-        bump((n) => n + 1);
         if (t < 1) raf = requestAnimationFrame(step);
-        else if (then) then();
+        else {
+          bump((n) => n + 1);
+          if (then) then();
+        }
       };
       raf = requestAnimationFrame(step);
     };
@@ -449,22 +1293,26 @@ export default function PlanMap({
       shownRef.current = selected;
       setShown(selected);
       if (selected) ramp(0, 1, UP_MS);
-      else riseRef.current = 0;
+      else {
+        riseRef.current = 0;
+        paintWalls(null);
+      }
     };
 
     if (shownRef.current) ramp(riseRef.current, 0, DOWN_MS, raise);
     else raise();
 
     return () => cancelAnimationFrame(raf);
-  }, [selected, overlayRef, bump]);
+  }, [selected, overlayRef, bump, paintWalls]);
 
   /* How much bigger than the viewport the map has to be so that turning
-     it never exposes a corner. Inverse-transform the viewport corners
-     into container space and take the worst case over all headings.
+     the CONTAINER never exposes a corner. Inverse-transform the
+     viewport corners into container space and take the worst case over
+     all headings.
 
-     Keyed to `turned`, not `selected`: a free rotation turns the same
-     container, and without the padding its corners swing into view
-     halfway through the gesture. */
+     Keyed to the CSS camera only. The native rotation transforms
+     nothing, so browsing a turned map costs no oversizing at all — this
+     stays at {0,0} until a plot is picked. */
   useEffect(() => {
     const fit = () => {
       const el = viewRef.current;
@@ -476,8 +1324,23 @@ export default function PlanMap({
       setPad({ x: Math.ceil(half - W / 2), y: Math.ceil(half - H / 2) });
     };
     fit();
+
+    /* Same reasoning as the re-frame above: the container can change
+       size without the window doing anything. An under-sized container
+       shows a bare corner the moment the view is turned. */
+    let ro = null;
+    const el = viewRef.current;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(fit);
+      ro.observe(el);
+    }
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    window.addEventListener('orientationchange', fit);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', fit);
+      window.removeEventListener('orientationchange', fit);
+    };
   }, [turned, selected]);
 
   /* the map itself */
@@ -491,14 +1354,21 @@ export default function PlanMap({
          still needs one to construct. */
       zoom: 18,
       mapTypeId: 'hybrid',
+      /* Without a Map ID set to Vector there is no native camera: the
+         free 360 does nothing on any device, though a picked plot still
+         behaves exactly as before. */
       ...(GOOGLE_MAP_STYLE_ID ? { mapId: GOOGLE_MAP_STYLE_ID } : {}),
       tilt: 0,
       heading: 0,
       streetViewControl: false,
       fullscreenControl: false,
+      /* Custom camera controls are intentionally omitted. */
       rotateControl: false,
       mapTypeControl: false,
       zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
+      /* 'greedy' also hands Google's built-in rotate and tilt gestures
+         to the map — two fingers on touch, ctrl-drag on a desktop — on
+         top of the drag handled below. */
       gestureHandling: 'greedy',
       /* Must be at least FLY_MAX_Z. The overlay stays sharp well past
          the imagery, and the lower of the two caps wins — a maxZoom
@@ -528,6 +1398,17 @@ export default function PlanMap({
     onReady();
   }, [maps, mapRef, toLL, bounds, onReady, fitPlan]);
 
+  /* Google's own gestures move the native camera without going through
+     this file, so the flag that offers the reset control is kept in
+     step by listening to the map rather than by being written to. */
+  useEffect(() => {
+    if (!map || !maps) return undefined;
+    const ls = ['heading_changed', 'tilt_changed']
+      .map((ev) => maps.event.addListener(map, ev, syncNative));
+    syncNative();
+    return () => ls.forEach((l) => maps.event.removeListener(l));
+  }, [map, maps, syncNative]);
+
   useLayoutEffect(() => {
     winRef.current = win;
     if (overlayRef.current) overlayRef.current.draw();
@@ -546,6 +1427,10 @@ export default function PlanMap({
      transform's scale stays at 1.0 forever and every glyph is rendered
      at its final size. Fewer plots per frame, too. The window is padded
      well past the edges so ordinary panning doesn't touch it.
+
+     This copes with a natively rotated map without being told about it:
+     the four window corners are projected one by one and quadMatrix
+     takes whatever quadrilateral comes back, turned or not.
   --------------------------------------------------------------- */
   useEffect(() => {
     drawRef.current = (proj, dPlan, dScrim, dWall, dLift) => {
@@ -581,13 +1466,17 @@ export default function PlanMap({
 
       /* Re-render only when the view has genuinely left the window, or
          the zoom has moved enough to matter. Everything in between rides
-         the transform, which is what keeps panning cheap. A flight
-         crosses this threshold once or twice on the way in — widen the
-         rescale band if that shows up as a flicker on slow machines. */
+         the transform, which is what keeps panning cheap.
+
+         The band is wide, and NOTHING re-renders mid-flight. A 900 ms
+         glide used to cross the old band two or three times, and each
+         crossing re-rendered the entire plan SVG — that is the hitch
+         halfway into a pick. The window is left alone until the camera
+         has landed, then settled once by the flight's own last frame. */
       const outside = nw.x0 < cur.x0 - 0.01 || nw.y0 < cur.y0 - 0.01
         || nw.x1 > cur.x1 + 0.01 || nw.y1 > cur.y1 + 0.01;
-      const rescaled = pxPerM / cur.s > 1.12 || pxPerM / cur.s < 0.55;
-      if (outside || rescaled) { setWin(nw); return; }
+      const rescaled = pxPerM / cur.s > 1.6 || pxPerM / cur.s < 0.45;
+      if ((outside || rescaled) && !flyingRef.current) { setWin(nw); return; }
 
       /* the window's own pixel size, held to a sane texture budget */
       const spanX = cur.x1 - cur.x0;
@@ -610,7 +1499,8 @@ export default function PlanMap({
 
       if (!sel) {
         dLift.style.transform = m;
-        setWalls(null);
+        paintWalls(null);
+        paintDims(null);
         return;
       }
 
@@ -619,11 +1509,16 @@ export default function PlanMap({
          block needs and run it back through the camera. Otherwise the
          block would rise sideways as soon as you turned the view. */
       const cam = camRef.current;
+
+      /* held flat until the user turns it themselves — see topLockRef */
+      if (topLockRef.current) { cam.spin = 0; cam.tilt = 0; }
+
       const ct = Math.cos(cam.tilt);
       const rise = LIFT_H * pxPerM * Math.sin(cam.tilt) * riseRef.current;
       if (rise < 0.5) {
         dLift.style.transform = m;
-        setWalls(null);
+        paintWalls(null);
+        paintDims(null);
         return;
       }
       const up = {
@@ -642,43 +1537,133 @@ export default function PlanMap({
       const bx1 = Math.ceil(Math.max(...all.map((q) => q.x))) + 2;
       const by1 = Math.ceil(Math.max(...all.map((q) => q.y))) + 2;
 
-      setWalls({
-        box: { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 },
-        faces: ring.map((_, i) => {
-          const u = ring[i];
-          const v = ring[(i + 1) % ring.length];
-          return {
-            i,
-            // nearness after the turn: project the edge onto the screen-down axis
-            depth: (u.y + v.y) * Math.cos(cam.spin) - (u.x + v.x) * Math.sin(cam.spin),
-            d: `M${u.x} ${u.y}L${v.x} ${v.y}`
-              + `L${v.x + up.x} ${v.y + up.y}L${u.x + up.x} ${u.y + up.y}Z`,
-          };
-        }).sort((u, v) => u.depth - v.depth),
-      });
+      const faces = ring.map((_, i) => {
+        const u = ring[i];
+        const v = ring[(i + 1) % ring.length];
+        return {
+          i,
+          // nearness after the turn: project the edge onto the screen-down axis
+          depth: (u.y + v.y) * Math.cos(cam.spin) - (u.x + v.x) * Math.sin(cam.spin),
+          d: `M${u.x} ${u.y}L${v.x} ${v.y}`
+            + `L${v.x + up.x} ${v.y + up.y}L${u.x + up.x} ${u.y + up.y}Z`,
+        };
+      }).sort((u, v) => u.depth - v.depth);
+
+      paintWalls({ x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }, faces);
+
+      /* ── the figures ──────────────────────────────────────────
+         One per edge, sitting on the TOP face of the raised block
+         (hence + up), pushed clear of the edge along the outward
+         direction, and turned back upright against the camera.
+
+         Everything is measured on SCREEN before it is used: an edge is
+         skipped when it is too short to carry a figure legibly at this
+         zoom, and the offset is a screen distance mapped back into
+         container coordinates, so a label sits the same distance off
+         its edge whether the view is flat or tilted right over. */
+      if (!SCREEN_DIMS) { paintDims(null); return; }
+
+      const cs = Math.cos(cam.spin);
+      const ss = Math.sin(cam.spin);
+      const gx = ring.reduce((s2, p) => s2 + p.x, 0) / ring.length;
+      const gy = ring.reduce((s2, p) => s2 + p.y, 0) / ring.length;
+      const items = [];
+
+      for (let i = 0; i < ring.length; i += 1) {
+        const u = ring[i];
+        const v = ring[(i + 1) % ring.length];
+        const a = sel.pts[i];
+        const b = sel.pts[(i + 1) % sel.pts.length];
+
+        /* the edge as the screen sees it, to decide if it can carry a
+           figure at all */
+        const dxc = v.x - u.x;
+        const dyc = v.y - u.y;
+        const ex = dxc * cs - dyc * ss;
+        const ey = (dxc * ss + dyc * cs) * ct;
+        if (Math.hypot(ex, ey) < DIM_MIN_EDGE) continue;
+
+        /* outward, normalised in SCREEN px, then mapped back into
+           container coordinates */
+        const mx = (u.x + v.x) / 2;
+        const my = (u.y + v.y) / 2;
+        const ox = mx - gx;
+        const oy = my - gy;
+        const osx = ox * cs - oy * ss;
+        const osy = (ox * ss + oy * cs) * ct;
+        const n = Math.hypot(osx, osy) || 1;
+        const fx = (osx / n) * DIM_OFFSET;
+        const fy = (osy / n) * DIM_OFFSET;
+        const kx = fx * cs + (fy / ct) * ss;
+        const ky = (fy / ct) * cs - fx * ss;
+
+        const metres = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        items.push({
+          x: mx + up.x + kx,
+          y: my + up.y + ky,
+          rot: -cam.spin / RAD,
+          sy: 1 / ct,
+          label: `${metres >= 10 ? metres.toFixed(1) : metres.toFixed(2)} m`,
+        });
+      }
+
+      paintDims({
+        x: bx0 - DIM_PAD,
+        y: by0 - DIM_PAD,
+        w: (bx1 - bx0) + DIM_PAD * 2,
+        h: (by1 - by0) + DIM_PAD * 2,
+      }, items);
     };
     if (overlayRef.current) overlayRef.current.draw();
-  }, [maps, map, layout, toLL, toDraw, bounds, selected, shown, win, camRef, overlayRef]);
+  }, [
+    maps, map, layout, toLL, toDraw, bounds, selected, shown, win,
+    camRef, overlayRef, paintWalls, paintDims,
+  ]);
 
-  /* ── Turning the view ────────────────────────────────────────────
-     Shared by both gestures: apply a delta measured from wherever the
-     grab started, then redraw. Measuring from the start rather than
-     frame to frame is what stops it jumping on the first move. */
+  /* ── Turning the view, plot raised ───────────────────────────────
+     The CSS camera. Apply a delta measured from wherever the grab
+     started, then redraw. Measuring from the start rather than frame to
+     frame is what stops it jumping on the first move.
+
+     Draw only. No bump, no syncTurned — both are setState, and per
+     frame they re-render the plan under a moving camera for no visible
+     gain. They run once at the end of the gesture instead. */
   const applyTurn = useCallback((dSpin, dTilt, from) => {
+    /* A deliberate turn, not the jitter of a finger resting on the
+       glass. Past this the view is theirs and the top-view hold is
+       done — for this pick; the next one starts flat again. */
+    if (Math.abs(dSpin) > 0.01 || Math.abs(dTilt) > 0.01) {
+      topLockRef.current = false;
+    }
     camRef.current.spin = from.spin + dSpin;
     camRef.current.tilt = clamp(from.tilt + dTilt, 0, MAX_TILT);
     if (overlayRef.current) overlayRef.current.draw();
-    bump((n) => n + 1);
     touched.current = Date.now();
-  }, [camRef, overlayRef, bump, touched]);
+  }, [camRef, overlayRef, touched]);
 
   /* With a plot raised the whole surface orbits on a plain drag. */
   const startOrbit = (e) => {
     stopFly();
     touched.current = Date.now();
     if (!selRef.current) return;
+
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
+
+    pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinchRef.current.size === 2) {
+      const points = [...pinchRef.current.values()];
+      const dx = points[1].x - points[0].x;
+      const dy = points[1].y - points[0].y;
+      pinchStartRef.current = {
+        distance: Math.hypot(dx, dy),
+        zoom: mapRef.current?.getZoom?.() || 18,
+      };
+      dragRef.current = null;
+      return;
+    }
+
     dragRef.current = {
       x: e.clientX, y: e.clientY,
       spin: camRef.current.spin, tilt: camRef.current.tilt, moved: false,
@@ -686,87 +1671,182 @@ export default function PlanMap({
   };
 
   const onPointerMove = (e) => {
+    if (pinchRef.current.has(e.pointerId)) {
+      pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (pinchRef.current.size >= 2) {
+      const start = pinchStartRef.current;
+      const points = [...pinchRef.current.values()];
+      if (!start || points.length < 2) return;
+
+      const dx = points[1].x - points[0].x;
+      const dy = points[1].y - points[0].y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const zoomDelta = Math.log2(distance / Math.max(1, start.distance));
+      const nextZoom = clamp(
+        start.zoom + zoomDelta * PINCH_GAIN,
+        FLY_MIN_Z,
+        MAP_MAX_Z,
+      );
+
+      /* the plot stays under the fingers, and the frame is theirs from
+         here on — no refit will take this zoom back */
+      manualZoomRef.current = true;
+      zoomAtPlot(nextZoom);
+      touched.current = Date.now();
+      return;
+    }
+
     const g = dragRef.current;
     if (!g) return;
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) g.moved = true;
-    applyTurn(dx * 0.008, -dy * 0.006, g);   // across to turn, up/down to tip
+    applyTurn(dx * 0.008, -dy * 0.006, g);
   };
 
-  const endDrag = () => {
+  const endDrag = (e) => {
+    pinchRef.current.delete(e?.pointerId);
+
+    if (pinchRef.current.size < 2) {
+      pinchStartRef.current = null;
+    }
+
     touched.current = Date.now();
+
+    // Do not interpret the end of a pinch as a tap.
+    if (pinchRef.current.size > 0 || pinchStartRef.current) {
+      dragRef.current = null;
+      if (pinchRef.current.size === 0) pinchStartRef.current = null;
+      syncTurned();
+      bump((n) => n + 1);
+      return;
+    }
+
     dragRef.current = null;
     syncTurned();
+    bump((n) => n + 1);
+    refitPick();
   };
 
   const draggedJustNow = () => !!(dragRef.current && dragRef.current.moved);
 
-  /* ── Free rotation, nothing raised ───────────────────────────────
-     Two fingers on touch, shift-drag or right-drag on a desktop. It
-     cannot be the one-finger drag: the map already owns that for
-     panning, and one gesture cannot mean both.
+  /* ── Turning the view, nothing raised ────────────────────────────
+     The NATIVE camera, and the free 360.
 
-     The angle BETWEEN the two touches gives the heading, and the change
-     in their vertical midpoint gives the tilt. Google's own gesture
-     handling is switched off for the duration, or the map would pan and
-     rotate at the same time. */
-  const twoFingerStart = (e) => {
-    if (selRef.current || e.touches.length !== 2) return;
-    const [a, b] = e.touches;
-    stopFly();
-    touched.current = Date.now();
-    pinchRef.current = {
-      angle: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX),
-      midY: (a.clientY + b.clientY) / 2,
-      spin: camRef.current.spin,
-      tilt: camRef.current.tilt,
-    };
-    const m = mapRef.current;
-    if (m) m.setOptions({ draggable: false, gestureHandling: 'none' });
-  };
+     TOUCH: two fingers. The twist between them is the heading, moving
+     them up and down together is the tilt, and spreading them is still
+     the zoom — all three off one gesture, computed here rather than
+     left to Google, because its own two-finger handling varies by
+     platform and gives no tilt below certain zooms. Heading WRAPS, so
+     it laps forever at ANY zoom. While the gesture is live the map's
+     own handling is switched off, or both would act on the same two
+     fingers and the view would turn twice as far as the hand.
 
-  const twoFingerMove = (e) => {
-    const g = pinchRef.current;
-    if (!g || e.touches.length !== 2) return;
-    e.preventDefault();
-    const [a, b] = e.touches;
-    const angle = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
-    const midY = (a.clientY + b.clientY) / 2;
-    applyTurn(angle - g.angle, (g.midY - midY) * 0.006, g);
-  };
+     One finger still pans, which is what anyone expects of a map.
 
-  const twoFingerEnd = () => {
-    if (!pinchRef.current) return;
-    pinchRef.current = null;
-    syncTurned();
-    const m = mapRef.current;
-    if (m && !selRef.current) m.setOptions({ draggable: true, gestureHandling: 'greedy' });
-  };
+     MOUSE: a left drag turns and tilts. Google's ctrl-drag is still
+     there underneath.
 
-  /* The desktop equivalent: no second finger, so a modifier stands in.
-     A plain drag still pans, which is what anyone expects of a map. */
-  const modifierTurnStart = (e) => {
+     NONE OF THIS WORKS ON A RASTER MAP. Vector Map ID, or nothing. */
+  const nativeTurnStart = (e) => {
     if (selRef.current) return;
-    if (!(e.shiftKey || e.button === 2)) return;
+    const m = mapRef.current;
+    if (!m || typeof m.moveCamera !== 'function') return;
+
     stopFly();
+    nativeTouchRef.current = Date.now();
+
+    if (e.pointerType === 'touch') {
+      natPtrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (natPtrs.current.size === 2) {
+        const [p, q] = [...natPtrs.current.values()];
+        natGesture.current = {
+          angle: Math.atan2(q.y - p.y, q.x - p.x),
+          dist: Math.max(1, Math.hypot(q.x - p.x, q.y - p.y)),
+          midY: (p.y + q.y) / 2,
+          heading: m.getHeading() || 0,
+          tilt: m.getTilt() || 0,
+          zoom: m.getZoom() || 18,
+        };
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
+        /* take the gesture over completely */
+        m.setOptions({ gestureHandling: 'none', draggable: false });
+      }
+      return;
+    }
+
+    if (e.button !== 0) return;
+
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = {
+    nativeDragRef.current = {
       x: e.clientX, y: e.clientY,
-      spin: camRef.current.spin, tilt: camRef.current.tilt, moved: false,
+      heading: m.getHeading() || 0, tilt: m.getTilt() || 0,
     };
-    const m = mapRef.current;
-    if (m) m.setOptions({ draggable: false });
+    m.setOptions({ draggable: false });
   };
 
-  const modifierTurnEnd = () => {
-    if (!dragRef.current) return;
-    dragRef.current = null;
-    syncTurned();
+  const nativeTurnMove = (e) => {
     const m = mapRef.current;
-    if (m && !selRef.current) m.setOptions({ draggable: true });
+    if (!m || selRef.current) return;
+
+    /* two fingers: twist, tilt and pinch in one pass */
+    if (natPtrs.current.has(e.pointerId)) {
+      natPtrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const g = natGesture.current;
+      if (!g || natPtrs.current.size < 2) return;
+
+      const [p, q] = [...natPtrs.current.values()];
+      let dA = (Math.atan2(q.y - p.y, q.x - p.x) - g.angle) / RAD;
+      if (dA > 180) dA -= 360;
+      if (dA < -180) dA += 360;
+
+      const dist = Math.max(1, Math.hypot(q.x - p.x, q.y - p.y));
+      const midY = (p.y + q.y) / 2;
+
+      m.moveCamera({
+        /* flip this sign if the map turns against the fingers */
+        heading: wrapDeg(g.heading - dA),
+        tilt: clamp(g.tilt + (g.midY - midY) * NATIVE_TILT_PER_PX, 0, NATIVE_MAX_TILT_DEG),
+        zoom: clamp(g.zoom + Math.log2(dist / g.dist), FLY_MIN_Z, MAP_MAX_Z),
+      });
+      nativeTouchRef.current = Date.now();
+      return;
+    }
+
+    const g = nativeDragRef.current;
+    if (!g) return;
+    nativeTouchRef.current = Date.now();
+    m.moveCamera({
+      heading: wrapDeg(g.heading + (e.clientX - g.x) * NATIVE_SPIN_PER_PX),
+      tilt: clamp(g.tilt - (e.clientY - g.y) * NATIVE_TILT_PER_PX, 0, NATIVE_MAX_TILT_DEG),
+    });
   };
+
+  const nativeTurnEnd = (e) => {
+    const m = mapRef.current;
+    if (e) natPtrs.current.delete(e.pointerId);
+
+    if (natGesture.current && natPtrs.current.size < 2) {
+      natGesture.current = null;
+      if (m && !selRef.current) {
+        m.setOptions({ gestureHandling: 'greedy', draggable: true });
+      }
+    }
+
+    if (nativeDragRef.current) {
+      nativeDragRef.current = null;
+      if (m && !selRef.current) m.setOptions({ draggable: true });
+    }
+
+    nativeTouchRef.current = Date.now();
+    syncNative();
+  };
+
+  /* Any touch of the map hands the auto-spin back to the user. */
+  const noteNativeTouch = () => { nativeTouchRef.current = Date.now(); };
 
   /* A tap on the orbit surface that never became a drag is meant for
      whatever sits under it. The surface can't be pointerEvents:none —
@@ -785,35 +1865,103 @@ export default function PlanMap({
 
   const endOrbit = (e) => {
     const g = dragRef.current;
+
+    pinchRef.current.delete(e.pointerId);
+
+    // A pinch must never become a plot click when the second finger lifts.
+    if (pinchStartRef.current) {
+      if (pinchRef.current.size < 2) pinchStartRef.current = null;
+      dragRef.current = null;
+      touched.current = Date.now();
+      syncTurned();
+      bump((n) => n + 1);
+      return;
+    }
+
     touched.current = Date.now();
     dragRef.current = null;
     syncTurned();
-    if (g && g.moved) return;                 // turned the view, not a pick
+    bump((n) => n + 1);
+
+    if (g && g.moved) { refitPick(); return; }
+
+    /* A second tap in the same place, quickly, means closer — the
+       gesture everyone tries first on a map, and the one that needs no
+       second finger to land anywhere in particular. */
+    const now = Date.now();
+    const last = tapRef.current;
+    tapRef.current = { x: e.clientX, y: e.clientY, t: now };
+    if (last && now - last.t < DOUBLE_TAP_MS
+      && Math.hypot(e.clientX - last.x, e.clientY - last.y) < DOUBLE_TAP_PX) {
+      tapRef.current = null;
+      nudgeZoom(ZOOM_STEP);
+      return;
+    }
+
     const name = pickThrough(e);
     if (name && name !== selRef.current) onSelect(name);
   };
 
   /* Google positions its drag and wheel handling from raw client
      coordinates, which the container transform invalidates. Rather than
-     let it pan to the wrong place, take both over while a plot is up. */
+     let it pan to the wrong place, take both over while a plot is up.
+     Anything the native turn switched off is switched back on here, so
+     a gesture interrupted by a pick can't leave the map dead. */
   useEffect(() => {
     const m = mapRef.current;
     if (!m) return;
-    m.setOptions({ draggable: !selected, scrollwheel: !selected });
+    if (selected) {
+      natPtrs.current.clear();
+      natGesture.current = null;
+      nativeDragRef.current = null;
+    }
+    m.setOptions({
+      draggable: !selected,
+      scrollwheel: !selected,
+      gestureHandling: 'greedy',
+    });
   }, [selected, mapRef, map]);
 
   /* The flight leaves the zoom on a fraction, so step from the nearest
-     whole one — otherwise every wheel notch inherits the drift. */
+     whole one — otherwise every wheel notch inherits the drift. Only
+     while a plot is up; otherwise the map's own wheel zoom is fine. */
   const onWheel = useCallback((e) => {
     const m = mapRef.current;
     if (!selected || !m) return;
     e.preventDefault();
     stopFly();
     wheelRef.current += e.deltaY;
-    if (Math.abs(wheelRef.current) < 40) return;
-    m.setZoom(Math.round(m.getZoom()) + (wheelRef.current > 0 ? -1 : 1));
+    if (Math.abs(wheelRef.current) < 12) return;
+
+    const currentZoom = m.getZoom() || 18;
+    const direction = wheelRef.current > 0 ? -1 : 1;
+    const step = Math.min(0.6, Math.max(0.18, Math.abs(wheelRef.current) / 120));
+    const nextZoom = clamp(
+      currentZoom + direction * step,
+      FLY_MIN_Z,
+      MAP_MAX_Z,
+    );
+
+    manualZoomRef.current = true;
+    zoomAtPlot(nextZoom);
+
     wheelRef.current = 0;
-  }, [selected, mapRef, stopFly]);
+  }, [selected, mapRef, stopFly, zoomAtPlot]);
+
+  /* React registers its root `wheel` listener as PASSIVE (17 and
+     later), so e.preventDefault() inside an onWheel prop is ignored and
+     the browser scrolls or zooms the page underneath the raised plot.
+     Bind it on the element ourselves, non-passive, where the cancel
+     actually takes.
+
+     macOS trackpad pinch arrives here too, as ctrl+wheel, which is also
+     the browser's own page-zoom gesture — the same cancel covers it. */
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return undefined;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [onWheel]);
 
   const shownPlot = shown ? layout.byName.get(shown) : null;
 
@@ -824,6 +1972,14 @@ export default function PlanMap({
   const viewBox = `${win.x0} ${win.y0} ${spanX} ${spanY}`;
   const sheetW = spanX * sheetS;
   const sheetH = spanY * sheetS;
+
+  /* Stable, so PlanContentMemo can actually hold. An inline arrow here
+     would hand it a new prop every render and the memo would never
+     hit. */
+  const onPickPlot = useCallback((name) => {
+    if (dragRef.current && dragRef.current.moved) return;
+    onSelect(name);
+  }, [onSelect]);
 
   const planLayer = divs && createPortal(
     <svg
@@ -841,7 +1997,7 @@ export default function PlanMap({
       onPointerCancel={endDrag}
       onMouseLeave={() => setHover(null)}
     >
-      <PlanContent
+      <PlanContentMemo
         layout={layout}
         selected={shown}
         matches={shownMatches}
@@ -850,23 +2006,36 @@ export default function PlanMap({
         showStatus={statusOn}
         hover={hover}
         setHover={setHover}
-        onPick={(name) => { if (!draggedJustNow()) onSelect(name); }}
+        onPick={onPickPlot}
       />
     </svg>,
     divs.plan,
   );
 
-  const wallLayer = divs && walls && createPortal(
-    <svg
-      width={walls.box.w}
-      height={walls.box.h}
-      viewBox={`${walls.box.x} ${walls.box.y} ${walls.box.w} ${walls.box.h}`}
-      style={{ position: 'absolute', left: walls.box.x, top: walls.box.y, display: 'block' }}
-    >
-      {walls.faces.map((f) => (
-        <path key={f.i} d={f.d} fill={WALL_FILL} stroke={WALL_EDGE} strokeWidth={1} />
-      ))}
-    </svg>,
+  /* Two nodes, mounted once, written to by paintWalls and paintDims.
+     Neither is re-rendered per frame — see paintWalls for why. They
+     share the wall pane because it is the one layer that carries NO
+     matrix3d of its own: its contents are already in container pixels,
+     which is what both painters produce.
+
+     The figures come second so they sit over the walls. */
+  const wallLayer = divs && createPortal(
+    <>
+      <svg
+        ref={wallSvgRef}
+        style={{
+          position: 'absolute', left: 0, top: 0,
+          display: 'none', pointerEvents: 'none',
+        }}
+      />
+      <svg
+        ref={dimSvgRef}
+        style={{
+          position: 'absolute', left: 0, top: 0,
+          display: 'none', pointerEvents: 'none', overflow: 'visible',
+        }}
+      />
+    </>,
     divs.wall,
   );
 
@@ -883,29 +2052,29 @@ export default function PlanMap({
         stroke="#E9C6F2"
         strokeWidth={SEL_STROKE}
       />
-      <DimensionOverlay plot={shownPlot} />
+      {/* The figures moved to the screen-space layer above — see
+          SCREEN_DIMS. Leaving this on as well would print every
+          measurement twice, once legibly and once not. */}
+      {!SCREEN_DIMS && <DimensionOverlay plot={shownPlot} />}
     </svg>,
     divs.lift,
   );
 
   return (
     <>
-      {/* The window you see through; the map inside it is deliberately
-          larger. The turn gestures live here rather than on the plan,
-          because they must work over bare ground too — there is no
-          reason to have to find a plot before you can rotate. */}
+      {/* The window you see through. With a plot raised the map inside
+          is deliberately larger, because the container turns; with
+          nothing raised pad is {0,0} and the map sits flush, because
+          the rotation is the map's own and nothing is transformed. */}
       <div
         ref={viewRef}
-        onWheel={onWheel}
-        onTouchStart={twoFingerStart}
-        onTouchMove={twoFingerMove}
-        onTouchEnd={twoFingerEnd}
-        onTouchCancel={twoFingerEnd}
-        onPointerDown={modifierTurnStart}
-        onPointerMove={(e) => { if (!selRef.current && dragRef.current) onPointerMove(e); }}
-        onPointerUp={modifierTurnEnd}
-        onPointerCancel={modifierTurnEnd}
+        onTouchStart={noteNativeTouch}
+        onPointerDown={nativeTurnStart}
+        onPointerMove={nativeTurnMove}
+        onPointerUp={nativeTurnEnd}
+        onPointerCancel={nativeTurnEnd}
         onContextMenu={(e) => e.preventDefault()}
+        className="plan-map-viewport"
         style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: CANVAS }}
       >
         <div
@@ -919,20 +2088,13 @@ export default function PlanMap({
         />
       </div>
 
-      {/* orbit surface: covers everything while a plot is up, so a drag
-          always turns the view. A tap that doesn't move is handed down
-          to the plan beneath by endOrbit. */}
+      {/* orbit surface: covers the map while a plot is up. The quotation
+          sheet is expected to sit above this with pointer-events:none on
+          its non-interactive shell, so two-finger gestures can continue
+          through the sheet while its buttons remain clickable. */}
       {selected && (
         <div
-          onPointerDown={(e) => {
-            stopFly();
-            touched.current = Date.now();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            dragRef.current = {
-              x: e.clientX, y: e.clientY,
-              spin: camRef.current.spin, tilt: camRef.current.tilt, moved: false,
-            };
-          }}
+          onPointerDown={startOrbit}
           onPointerMove={onPointerMove}
           onPointerUp={endOrbit}
           onPointerCancel={endOrbit}
@@ -947,15 +2109,68 @@ export default function PlanMap({
       {wallLayer}
       {liftLayer}
 
-      {/* Offered whenever the camera is off square, not only while a
-          plot is up — a free rotation with no way back to north is a
-          trap. */}
-      <CameraControls
-        enabled={!!selected || turned}
-        spin={spin}
-        onToggleSpin={() => { touched.current = 0; setSpin((v) => !v); }}
-        onFaceNorth={() => { faceNorth(); setTimeout(syncTurned, 400); }}
-      />
+      {/* Zoom, on screen, while a plot is raised.
+
+          Not decoration and not a fallback for a broken gesture: it is
+          the only zoom that is guaranteed to be reachable. A pinch can
+          be swallowed by whatever the parent floats over the map, a
+          wheel needs a mouse, and neither exists on a demo tablet
+          someone is holding in one hand in front of a customer.
+
+          zIndex 6 puts it over the orbit surface. It sits above
+          whatever the parent reserved at the bottom, so it never hides
+          under the quotation sheet — that is what `reserve` is for. */}
+      {selected && (
+        <div
+          style={{
+            position: 'absolute', zIndex: 6,
+            /* clear of the notch, the home indicator and a landscape
+               phone's rounded corner, on top of whatever the parent
+               reserved for its sheet */
+            right: safeArea('right', 12),
+            bottom: safeArea('bottom', (inset.bottom || 0) + 16),
+            display: 'grid', gap: 8, justifyItems: 'center',
+          }}
+        >
+          {[
+            { k: 'in', label: '+', title: 'Zoom in', act: () => nudgeZoom(ZOOM_STEP) },
+            { k: 'out', label: '−', title: 'Zoom out', act: () => nudgeZoom(-ZOOM_STEP) },
+            { k: 'fit', label: '⌂', title: 'Fit plot', act: fitPick },
+          ].map((b) => (
+            <button
+              key={b.k}
+              type="button"
+              title={b.title}
+              aria-label={b.title}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={b.act}
+              style={{
+                /* 44 px is the smallest target a finger lands on
+                   reliably — Apple's figure, and Google's 48 dp rounds
+                   to about the same. Do not shrink these on a phone;
+                   the phone is where they matter most. */
+                width: 44, height: 44,
+                /* 16 px or more, or iOS Safari zooms the page when the
+                   control is focused */
+                font: `500 18px/1 ${MONO}`,
+                WebkitTapHighlightColor: 'transparent',
+                WebkitAppearance: 'none',
+                appearance: 'none',
+                color: '#E7E1D5',
+                background: CANVAS,
+                border: `1px solid ${HAIR}`,
+                borderRadius: 12,
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                touchAction: 'manipulation',
+              }}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Filters. Above the orbit surface (zIndex 5) so it stays usable
           while a plot is raised. The count on the button is the only

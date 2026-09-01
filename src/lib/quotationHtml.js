@@ -193,10 +193,10 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
       <div class="table">
         ${amt('Description', 'Amount', { head: true })}
         ${amt('Total Plot Amount', q.totalPlotAmount, { sub: `${nfmt(q.plotSize)} sq ft × ${inr(q.ratePerSqFt)}` })}
-        ${amt('Agreement Amount (20%)', agreement, { alt: true })}
-        ${amt('Booking Amount', q.bookingAmount)}
-        ${amt('Down Payment', q.downPayment, { alt: true })}
-        ${amt('Balance Amount', q.loanAmount)}
+        ${amt('Agreement (20%)', agreement, { alt: true })}
+        ${amt('Booking', q.bookingAmount)}
+      
+        ${amt('Remaining', q.loanAmount)}
       </div>
       <div class="gap"></div>
 
@@ -212,7 +212,7 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
       <div class="sec">3. Administrative Charges</div>
       <div class="table">
         ${amt('Description', 'Amount', { head: true })}
-        ${amt('Mutation &amp; 7/12', q.mutation)}
+        ${amt('Legal & 7/12', q.mutation)}
         ${amt('Maintenance (3 Years)', q.societyCharges)}
         ${amt('Admin Total', q.adminTotal, { total: true })}
       </div>
@@ -229,13 +229,7 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
       </div>
       <div class="gap"></div>
 
-      <div class="box" style="border-color:#FFE082;background:#FFF8E1">
-        <h3 style="background:#F57F17">Balance Breakdown</h3>
-        ${sum('Total Plot Amount', q.totalPlotAmount)}
-        ${sum('− Booking Amount', q.bookingAmount, true)}
-        ${sum('− Down Payment', q.downPayment)}
-        <div class="grand" style="background:#F57F17"><span>= Balance Amount</span><span>${inr(q.loanAmount)}</span></div>
-      </div>
+    
     </div>
   </div>
 
