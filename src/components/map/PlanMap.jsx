@@ -2621,6 +2621,13 @@ export default function PlanMap({
   /* true only while a flight is in the air — see the draw window */
   const flyingRef = useRef(false);
 
+  /* True for as long as the NATIVE camera is being moved — a two-finger
+     turn, a mouse drag, or a lap. Same job as flyingRef: it tells the
+     draw callback to leave the drawing window alone. Re-rendering the
+     plan mid-gesture is what the flickering actually is. */
+  const turningRef = useRef(false);
+  const settleWinRef = useRef(0);
+
   /* which plot the camera has already flown to, so a late `reserve`
      re-aims instead of starting the whole flight again */
   const flownRef = useRef(null);
@@ -2685,6 +2692,14 @@ export default function PlanMap({
 
   const [pad, setPad] = useState({ x: 0, y: 0 });
   const [hover, setHover] = useState(null);
+  /* Hover is a PROP of the plan, so every change re-renders all of it.
+     A mouse turning the view sweeps across plots the whole time, which
+     used to fire one of these per frame — a second, quieter source of
+     the same flicker. Refused for the length of a gesture. */
+  const setHoverSafe = useCallback((v) => {
+    if (turningRef.current) return;
+    setHover((h) => (h === v ? h : v));
+  }, []);
   const [map, setMap] = useState(null);
   const [shown, setShown] = useState(null);
   const [win, setWin] = useState(() => ({ ...layout.bounds, s: 1 }));
@@ -3181,6 +3196,32 @@ export default function PlanMap({
     flyRef.current = requestAnimationFrame(step);
   }, [mapRef, pickFrame, overlayRef]);
 
+  /* ── THE GESTURE FLAG ────────────────────────────────────────────
+     One pair of calls around every native camera movement. While it is
+     up, the drawing window is frozen and hover is ignored, so a turn
+     costs no React renders at all — the plan rides the transform, which
+     is the whole point of the matrix3d.
+
+     The end is DELAYED past the last pointer event. A turn that ends
+     with the finger still moving is followed by a couple of stray
+     frames, and settling the window on one of those re-renders the plan
+     into a box the view has already left. 180 ms is long enough for
+     the camera to have stopped and short enough not to be noticed. */
+  const beginTurn = useCallback(() => {
+    clearTimeout(settleWinRef.current);
+    turningRef.current = true;
+  }, []);
+
+  const endTurn = useCallback(() => {
+    clearTimeout(settleWinRef.current);
+    settleWinRef.current = setTimeout(() => {
+      turningRef.current = false;
+      if (overlayRef.current) overlayRef.current.draw();
+    }, 180);
+  }, [overlayRef]);
+
+  useEffect(() => () => clearTimeout(settleWinRef.current), []);
+
   /* the flight is the user's the moment they touch anything */
   const stopFly = useCallback(() => {
     cancelAnimationFrame(flyRef.current);
@@ -3519,6 +3560,7 @@ export default function PlanMap({
       return undefined;
     }
     spunRef.current = 0;
+    turningRef.current = true;
     let last = performance.now();
     const step = (now) => {
       /* A backgrounded tab hands back one enormous dt on return, which
@@ -3564,8 +3606,11 @@ export default function PlanMap({
       nativeRafRef.current = requestAnimationFrame(step);
     };
     nativeRafRef.current = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(nativeRafRef.current);
-  }, [nativeSpin, selected, mapRef]);
+    return () => {
+      cancelAnimationFrame(nativeRafRef.current);
+      endTurn();
+    };
+  }, [nativeSpin, selected, mapRef, endTurn]);
 
   useEffect(() => () => cancelAnimationFrame(nativeRafRef.current), []);
 
@@ -3957,20 +4002,47 @@ export default function PlanMap({
       const pxPerM = Math.hypot(refX.x - ref.x, refX.y - ref.y) / 100;
       if (!(pxPerM > 0)) return;
 
-      /* what the viewport covers, back in drawing metres */
+      /* ── WHAT THE VIEWPORT COVERS, MADE HEADING-PROOF ─────────
+         A SQUARE about the view centre, wide enough to hold the
+         viewport whichever way the camera is pointing.
+
+         It used to be the bounding box of the four projected corners,
+         which is a different box at every heading: turn the map and the
+         box grows and shrinks continuously, crosses the window edge
+         several times a second, and each crossing calls setWin — a full
+         React re-render of the entire plan, mid-turn. That is the
+         flicker. Nothing about the ground has changed; only the shape
+         of the axis-aligned box around it.
+
+         Centre and radius don't rotate, so this window is the same
+         window at 0° and at 217°, and a turn re-renders nothing at all.
+         The cost is drawing a corner or two more of the layout than is
+         strictly on screen.
+
+         The radius is capped at the screen diagonal in ground metres:
+         under a steep tilt the top corners project out toward the
+         horizon, and an uncapped radius would swallow the whole drawing
+         and rasterise it at MAX_SHEET, which is soft type on every
+         plot. */
       const W = hostRef.current.clientWidth;
       const H = hostRef.current.clientHeight;
-      const seen = [[0, 0], [W, 0], [0, H], [W, H]].map(([cx, cy]) => {
+      const mid = proj.fromContainerPixelToLatLng(new maps.Point(W / 2, H / 2));
+      if (!mid) return;
+      const cd = toDraw(mid.lat(), mid.lng());
+      const cap = Math.hypot(W, H) / pxPerM;
+      let r = 0;
+      [[0, 0], [W, 0], [0, H], [W, H]].forEach(([cx, cy]) => {
         const ll = proj.fromContainerPixelToLatLng(new maps.Point(cx, cy));
-        return toDraw(ll.lat(), ll.lng());
+        if (!ll) return;
+        const q = toDraw(ll.lat(), ll.lng());
+        r = Math.max(r, Math.hypot(q[0] - cd[0], q[1] - cd[1]));
       });
-      const padX = (W / pxPerM) * 0.35;
-      const padY = (H / pxPerM) * 0.35;
+      r = Math.min(r || cap * 0.5, cap) * 1.35;   // 1.35 = room to pan into
       const nw = {
-        x0: clamp(Math.min(...seen.map((q) => q[0])) - padX, bounds.x0 - PAD, bounds.x1 + PAD),
-        y0: clamp(Math.min(...seen.map((q) => q[1])) - padY, bounds.y0 - PAD, bounds.y1 + PAD),
-        x1: clamp(Math.max(...seen.map((q) => q[0])) + padX, bounds.x0 - PAD, bounds.x1 + PAD),
-        y1: clamp(Math.max(...seen.map((q) => q[1])) + padY, bounds.y0 - PAD, bounds.y1 + PAD),
+        x0: clamp(cd[0] - r, bounds.x0 - PAD, bounds.x1 + PAD),
+        y0: clamp(cd[1] - r, bounds.y0 - PAD, bounds.y1 + PAD),
+        x1: clamp(cd[0] + r, bounds.x0 - PAD, bounds.x1 + PAD),
+        y1: clamp(cd[1] + r, bounds.y0 - PAD, bounds.y1 + PAD),
         s: pxPerM,
       };
       const cur = winRef.current;
@@ -3991,7 +4063,13 @@ export default function PlanMap({
       const outside = nw.x0 < cur.x0 - 0.01 || nw.y0 < cur.y0 - 0.01
         || nw.x1 > cur.x1 + 0.01 || nw.y1 > cur.y1 + 0.01;
       const rescaled = pxPerM / cur.s > 1.6 || pxPerM / cur.s < 0.45;
-      if ((outside || rescaled) && !flyingRef.current) { setWin(nw); return; }
+      /* Not while the camera is being moved. A flight, a turn, a tilt
+         or a lap all ride the transform; the window is settled once,
+         afterwards, by the gesture's own last draw. */
+      if ((outside || rescaled) && !flyingRef.current && !turningRef.current) {
+        setWin(nw);
+        return;
+      }
 
       /* the window's own pixel size, held to a sane texture budget */
       const spanX = cur.x1 - cur.x0;
@@ -4293,6 +4371,7 @@ export default function PlanMap({
         if (e.button !== 0) return;
         if (e.target && e.target.closest && e.target.closest(INTERACTIVE)) return;
         stopFly();
+        beginTurn();
         nativeTouchRef.current = Date.now();
         nativeDragRef.current = {
           x: e.clientX, y: e.clientY,
@@ -4315,6 +4394,7 @@ export default function PlanMap({
           zoom: m.getZoom() || 18,
         };
         stopFly();
+        beginTurn();
         /* take the gesture over completely, or Google acts on the same
            two fingers and the view turns twice as far as the hand */
         m.setOptions({ gestureHandling: 'none', draggable: false });
@@ -4374,6 +4454,7 @@ export default function PlanMap({
         }
       }
       nativeTouchRef.current = Date.now();
+      if (!natGesture.current && !nativeDragRef.current) endTurn();
       syncNative();
     };
 
@@ -4403,7 +4484,7 @@ export default function PlanMap({
       natGesture.current = null;
       nativeDragRef.current = null;
     };
-  }, [selected, mapRef, stopFly, syncNative]);
+  }, [selected, mapRef, stopFly, syncNative, beginTurn, endTurn]);
 
   /* Any touch of the map hands the auto-spin back to the user. */
   const noteNativeTouch = () => { nativeTouchRef.current = Date.now(); };
@@ -4555,7 +4636,7 @@ export default function PlanMap({
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
-      onMouseLeave={() => setHover(null)}
+      onMouseLeave={() => setHoverSafe(null)}
     >
       <PlanContentMemo
         layout={layout}
@@ -4565,7 +4646,7 @@ export default function PlanMap({
         showNumbers={numbersOn}
         showStatus={statusOn}
         hover={hover}
-        setHover={setHover}
+        setHover={setHoverSafe}
         onPick={onPickPlot}
       />
     </svg>,
