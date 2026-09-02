@@ -256,3 +256,39 @@
 @media (prefers-reduced-motion: reduce) {
   .qm-input, .qm-btn, .qm-auto-toggle { transition: none; }
 }
+
+
+/* ── DATE FIELDS ──────────────────────────────────────────────────────
+   Append to Quotationmodal.css, after the .qm-input rules so these win.
+
+   color-scheme is the one that matters on a dark dialog. Without it the
+   browser draws its calendar in light mode and the value text in the
+   field is near-black on your dark input — the field looks empty even
+   when it holds a date, which reads as "the date isn't saving".
+
+   The picker indicator is restored explicitly: appearance:none on
+   .qm-input hides it in WebKit, which leaves no visible way in at all,
+   and inverted so it isn't a black glyph on a dark field.
+
+   The min-height is iOS Safari, which collapses a date input to a few
+   pixels under appearance:none. 44 px is a finger-sized target anyway. */
+
+.qm-input--date {
+  color-scheme: dark;
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.qm-input--date::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+  filter: invert(1) brightness(1.6);
+}
+
+/* WebKit lays the day/month/year out as separate sub-fields and, left
+   alone, aligns them to the top of a tall input. */
+.qm-input--date::-webkit-datetime-edit {
+  padding: 0;
+}
