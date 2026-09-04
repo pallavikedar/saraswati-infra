@@ -34,7 +34,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-          
+            <Route path="/share/maps/:mapId/*" element={<PlanPage share />} />
 
             <Route path="/" element={<RequireAuth><EmployeeHome /></RequireAuth>} />
 <Route path="/quotations" element={<RequireAuth><QuotationsListPage /></RequireAuth>} />

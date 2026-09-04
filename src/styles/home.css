@@ -496,3 +496,9 @@ body {
 }
 
 
+.site-panel { top: 0; right: 0; bottom: 0; width: 360px; }
+@media (max-width: 600px) {
+  .site-panel { top: auto; left: 0; right: 0; height: 55vh; border-radius: 14px 14px 0 0; }
+}
+
+

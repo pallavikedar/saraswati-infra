@@ -615,6 +615,17 @@ export function SearchBar({ value, onChange, placeholder }) {
  * It drives the same tab state the mobile strip does — one source of
  * truth, two pieces of chrome.
  */
+
+
+export function ShareIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </svg>
+  );
+}
 export function NavRail({
   tabs, active, onSelect, userName, userRole, onSignOut,
 }) {

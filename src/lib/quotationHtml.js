@@ -72,8 +72,9 @@ const TERMS = [
   'If your accounts do not tally with our records please contact our office immediately.',
   'Please mention customer name, project name, plot no. & payment details behind your cheque or DD.',
   'Taxes as applicable by Govt. Cheque bounce charges will be applicable.',
-  'In case of booking cancellation Rs. 1000/- will be charged.',
-  'Agreement amount should be paid within 20 days and sale deed should be done within 3 months from the date of booking. If not the company will cancel the plot.',
+  // 'In case of booking cancellation Rs. 1000/- will be charged.',
+  // 'Agreement amount should be paid within 20 days and sale deed should be done within 3 months from the date of booking. If not the company will cancel the plot.',
+  'In case of booking cancellation, the booking amount will be refunded within 15–30 days from the date of cancellation.'
 ];
 
 export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswati Infra', logo = '' } = {}) {
@@ -199,9 +200,9 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
       <div class="table">
         ${amt('Description', 'Amount', { head: true })}
         ${amt('Total Plot Amount', q.totalPlotAmount, { sub: `${nfmt(q.plotSize)} sq ft × ${inr(q.ratePerSqFt)}` })}
-        ${amt('Agreement (20%)', agreement, { alt: true })}
+       
         ${amt('Booking', q.bookingAmount)}
-      
+       ${amt('Agreement (20%)', agreement, { alt: true })}
         ${amt('Remaining', q.loanAmount)}
       </div>
       <div class="gap"></div>
@@ -228,7 +229,7 @@ export function quotationHtml(q, { company = 'SARASWATI GROUP', unit = 'Saraswat
       <div class="box" style="border-color:#A5D6A7;background:${LIGHT_GREEN}">
         <h3 style="background:${GREEN}">Payment Summary</h3>
         ${sum('Plot Amount', q.totalPlotAmount)}
-        ${sum('Agreement Amt (20%)', agreement, true)}
+   
         ${sum('Stamp + Reg', stampReg)}
         ${sum('Admin Charges', q.adminTotal)}
         <div class="grand" style="background:${GREEN}"><span>GRAND TOTAL</span><span>${inr(q.finalTotalAmount)}</span></div>

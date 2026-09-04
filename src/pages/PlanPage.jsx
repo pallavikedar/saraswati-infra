@@ -11,6 +11,7 @@ import { useMapLayout } from '../hooks/useMapLayout';
 import { usePlotFilters } from '../hooks/usePlotFilters';
 import { saveQuotation } from '../firebase/quotationsRepo';
 import { useAuth } from '../context/Authcontext';
+import { SHARE_ROOT } from '../lib/share';
 import { ACCENT, BODY, CANVAS, HAIR, MONO, MUTED, SANS } from '../theme/tokens';
 
 /* Same two anchors PlanMap and DetailPanel already use (NARROW_PX /
@@ -33,7 +34,15 @@ function Curtain({ tone = MUTED, children }) {
   );
 }
 
-export default function PlanPage() {
+/**
+ * `share` is the whole difference between the salesman's map and the one
+ * a customer opens from WhatsApp. Rather than a second page that would
+ * fall behind this one, the same component runs with three things turned
+ * off: quoting, status editing, and the way back into the app. Anything
+ * added to the map itself is therefore in both views by default, which
+ * is the right default — the customer is meant to see the plan.
+ */
+export default function PlanPage({ share = false }) {
   const { mapId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -42,9 +51,13 @@ export default function PlanPage() {
   const flightRef = useRef(0);
   const prevSelRef = useRef(null);
 
+  /* Every path in this file hangs off one root, so the public and
+     private URLs cannot disagree about where a plot lives. */
+  const root = share ? SHARE_ROOT : '/maps';
+
   /* Plot numbers can carry slashes and spaces ("C-14/A"), so they are
      encoded going into the path and decoded coming out. */
-  const base = `/maps/${encodeURIComponent(mapId)}`;
+  const base = `${root}/${encodeURIComponent(mapId)}`;
   const plotPath = useCallback(
     (name) => `${base}/plot/${encodeURIComponent(name)}`,
     [base],
@@ -52,9 +65,13 @@ export default function PlanPage() {
 
   /* The URL is the selection. useMatch rather than a <Route> per state,
      so this component — and the Google map inside it — never unmounts. */
-  const plotMatch = useMatch('/maps/:mapId/plot/:plotName/*');
-  const quoteMatch = useMatch('/maps/:mapId/plot/:plotName/quote');
+  const plotMatch = useMatch(`${root}/:mapId/plot/:plotName/*`);
+  const rawQuoteMatch = useMatch(`${root}/:mapId/plot/:plotName/quote`);
   const selected = plotMatch ? decodeURIComponent(plotMatch.params.plotName) : null;
+
+  /* Belt and braces: the quote button is already gone in share mode, but
+     a hand-typed /quote must not open the modal either. */
+  const quoteMatch = share ? null : rawQuoteMatch;
 
   const [showNumbers, setShowNumbers] = useState(true);
   const [showStatus, setShowStatus] = useState(false);
@@ -160,17 +177,20 @@ export default function PlanPage() {
     navigate(name === selected ? base : plotPath(name));
   }, [navigate, selected, base, plotPath]);
 
+  /* user is null on the public route, so every read of it is optional
+     here — this callback is unreachable in share mode, but a crash on a
+     customer's phone is not worth the two question marks saved. */
   const onSaveQuote = useCallback((record) => saveQuotation({
     ...record,
     mapId,
     plotPath: selPlot ? selPlot.docPath : null,
-    savedBy: user.uid,
-    savedByName: user.name || user.email,
+    savedBy: user?.uid,
+    savedByName: user?.name || user?.email,
   }), [selPlot, mapId, user]);
 
   return (
     <div style={{
-     width: '100%', height: '100dvh', position: 'relative',
+      width: '100%', height: '100dvh', position: 'relative',
       display: 'flex', flexDirection: 'column', background: CANVAS, color: '#E7E1D5',
       fontFamily: BODY, overflow: 'hidden',
     }}>
@@ -213,7 +233,10 @@ export default function PlanPage() {
         showStatus={showStatus}
         setShowStatus={setShowStatus}
         onFitPlan={() => { navigate(base); fitWholePlan(); }}
-        onBack={() => navigate('/')}
+        /* null, not a no-op: a customer opening this from WhatsApp has
+           no dashboard to go back to, and a dead button is worse than
+           no button. Toolbar renders Back only when this is given. */
+        onBack={share ? null : () => navigate('/')}
       />
 
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
@@ -228,16 +251,24 @@ export default function PlanPage() {
             showNumbers={showNumbers}
             showStatus={showStatus}
             onReady={fitWholePlan}
+             mapId={mapId}
+            site={{
+              info: { title: 'Prospera Saraswati', rows: [, ['Plots', '51']], note: '' },
+              gallery: [{ url: '…', thumb: '…', caption: '' }],
+              brochures: [{ name: 'Layout plan', url: '…', size: '2.4 MB' }],
+            }}
           />
         )}
 
         <DetailPanel
           plot={selPlot}
           status={status}
-          setStatus={setStatus}
+          /* Shared link is read-only: the plan, the plot sizes and the
+             sold/available colours are the point, editing them is not. */
+          setStatus={share ? null : setStatus}
           latLng={selLL}
           onClose={() => navigate(base)}
-          onQuote={() => navigate(`${plotPath(selected)}/quote`)}
+          onQuote={share ? null : () => navigate(`${plotPath(selected)}/quote`)}
         />
 
         {layout && error && (

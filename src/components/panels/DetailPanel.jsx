@@ -1,4 +1,3 @@
-
 // import React, { useCallback, useEffect, useRef, useState } from 'react';
 // import { SQFT } from '../../lib/units';
 // import { straightSides } from '../../lib/geometry';
@@ -6,53 +5,70 @@
 // import { MONO, SANS } from '../../theme/tokens';
 
 // /* The panel is the one light surface in a dark app: it is the piece a
-//    customer leans over the phone to read, so it reads like paper.
+//    customer leans over the phone to read, so it reads like paper — and
+//    closer to a property spec sheet than to a stack of cards. Figures sit
+//    in one ruled block, the record under it in plain label/value rows,
+//    and the only saturated things on the surface are the status rail down
+//    the leading edge and the quotation button.
 
 //    Structure is header / scroll body / footer. The name, status and the
 //    quotation button are the three things a salesman needs at arm's
 //    length, so they never scroll away — on a long plot record it is the
 //    dimensions and notes that move.
 
-//    On a laptop it is a rail down the right. On a tablet or a phone
-//    there is no width to spare for one, so it goes to the bottom edge as
-//    a sheet — and a sheet at 56vh covers the plot it is describing. So it
-//    opens at a PEEK: name, status, the four figures and the CTA, which is
-//    the whole answer most of the time, in about a third of the height.
-//    The record is one tap away on the grab handle.
+//    On a laptop it is a rail down the right.
+
+//    On a tablet or a phone it DOCKS to a bottom corner instead of
+//    spanning the bottom edge. A full-width sheet ate the band of map you
+//    put two fingers on to rotate and tilt, and there is no way to rotate
+//    around a plot when the panel is sitting on the half of the screen you
+//    need to twist. So the resting state is a chip — plot number, status,
+//    area, and the two actions that matter as a segmented control — about
+//    the height of a button, hard against one corner. Everything else is
+//    map, and every gesture lands on map.
+
+//    The chip can be flipped to the other corner when the plot ends up
+//    underneath it, and it opens into a narrow card in place; the card is
+//    still corner-anchored, so most of the screen stays live.
 
 //    Either way the panel measures itself and reports the band it occupies
 //    through onReserve, so the map can frame the plot in the space that is
-//    actually left rather than behind the panel. */
-// const HAIR = 'rgba(20, 24, 32, 0.10)';
+//    actually left rather than behind the panel. Docked and closed it
+//    reserves nothing at all — a chip in a corner is not worth pushing a
+//    layout around. */
+// const HAIR = 'rgba(20, 24, 32, 0.11)';
 // const HAIR_SOFT = 'rgba(20, 24, 32, 0.06)';
-// const TEXT_MAIN = '#1C2230';
+// const TEXT_MAIN = '#161B24';
 // const TEXT_MUTED = '#6B7280';
+// const TEXT_FAINT = '#8A93A0';
 // const ACCENT = '#2C5A4F';
-// const ACCENT_BG = 'rgba(44, 90, 79, 0.08)';
-// const PAPER = 'rgba(255, 255, 255, 0.92)';
+// const ACCENT_DEEP = '#23483F';
+// const ACCENT_BG = 'rgba(44, 90, 79, 0.07)';
+// const FIELD = 'rgba(255, 255, 255, 0.5)';
+// const PAPER = 'rgba(255, 255, 255, 0.94)';
 
-// const SHEET_BP = 1024;   // at or below this the panel is a bottom sheet
+// const DOCK_BP = 1024;   // at or below this the panel docks to a corner
 
 // export default function DetailPanel({
 //   plot, status, setStatus, onClose, onQuote, latLng, onReserve,
 // }) {
-//   const [copied, setCopied] = useState(false);
 //   const [collapsed, setCollapsed] = useState(true);
-//   const [sheet, setSheet] = useState(
+//   const [side, setSide] = useState('right');
+//   const [dock, setDock] = useState(
 //     () => typeof window !== 'undefined'
-//       && window.matchMedia(`(max-width: ${SHEET_BP}px)`).matches,
+//       && window.matchMedia(`(max-width: ${DOCK_BP}px)`).matches,
 //   );
 //   const boxRef = useRef(null);
 //   const reserveRef = useRef(onReserve);
 
 //   useEffect(() => { reserveRef.current = onReserve; }, [onReserve]);
 
-//   /* rail or sheet — the same breakpoint the stylesheet uses, because
+//   /* rail or dock — the same breakpoint the stylesheet uses, because
 //      the measurement below has to know which edge is spoken for */
 //   useEffect(() => {
 //     if (typeof window === 'undefined') return undefined;
-//     const mq = window.matchMedia(`(max-width: ${SHEET_BP}px)`);
-//     const onChange = (e) => setSheet(e.matches);
+//     const mq = window.matchMedia(`(max-width: ${DOCK_BP}px)`);
+//     const onChange = (e) => setDock(e.matches);
 //     mq.addEventListener('change', onChange);
 //     return () => mq.removeEventListener('change', onChange);
 //   }, []);
@@ -60,15 +76,14 @@
 //   /* ---------------------------------------------------------------
 //      Tell the map what it can't have.
 
-//      Measured rather than declared: the sheet's height depends on the
-//      record, the safe-area inset and whether it is peeking, and a
-//      hard-coded number would be wrong on most of those. A ResizeObserver
-//      on the panel covers all of them at once.
+//      Measured rather than declared: the card's height depends on the
+//      record and the safe-area inset, and a hard-coded number would be
+//      wrong on most of those. A ResizeObserver covers them at once.
 
-//      The rail only counts when it is TALL. Collapsed to its header it is
-//      a small card in the top-right corner and the middle of the map is
-//      free, so reserving 348 px of width would push the plot left for no
-//      reason.
+//      Nothing is reserved for a closed chip, on either layout. The rail
+//      only counts when it is TALL; the docked card only counts when it is
+//      open, and then as width if it is narrow enough for the plot to sit
+//      beside it, as height if it isn't.
 //   --------------------------------------------------------------- */
 //   useEffect(() => {
 //     const send = reserveRef.current;
@@ -80,14 +95,21 @@
 //       const r = el.getBoundingClientRect();
 //       const vw = window.innerWidth;
 //       const vh = window.innerHeight;
-//       if (sheet) {
-//         send({ right: 0, bottom: Math.round(Math.max(vh - r.top, 0)) });
-//       } else {
-//         send({
-//           right: r.height > vh * 0.55 ? Math.round(Math.max(vw - r.left, 0)) : 0,
-//           bottom: 0,
-//         });
+
+//       if (dock) {
+//         if (collapsed) { send({ right: 0, bottom: 0 }); return; }
+//         if (side === 'right' && r.width <= vw * 0.62) {
+//           send({ right: Math.round(Math.max(vw - r.left, 0)), bottom: 0 });
+//         } else {
+//           send({ right: 0, bottom: Math.round(Math.max(vh - r.top, 0)) });
+//         }
+//         return;
 //       }
+
+//       send({
+//         right: r.height > vh * 0.55 ? Math.round(Math.max(vw - r.left, 0)) : 0,
+//         bottom: 0,
+//       });
 //     };
 
 //     measure();
@@ -98,7 +120,7 @@
 //       ro.disconnect();
 //       window.removeEventListener('resize', measure);
 //     };
-//   }, [plot, sheet, collapsed]);
+//   }, [plot, dock, collapsed, side]);
 
 //   /* give the space back when the panel goes away for good */
 //   useEffect(() => () => {
@@ -106,6 +128,7 @@
 //   }, []);
 
 //   const toggle = useCallback(() => setCollapsed((v) => !v), []);
+//   const flip = useCallback(() => setSide((s) => (s === 'right' ? 'left' : 'right')), []);
 
 //   if (!plot) return null;
 
@@ -117,9 +140,9 @@
 //   const sqm = Math.round(plot.area);
 //   const sqft = Math.round(plot.area * SQFT);
 
-//   const stats = [
-//     { label: 'Area', value: sqm.toLocaleString('en-IN'), unit: 'm²' },
+//   const figures = [
 //     { label: 'Area', value: sqft.toLocaleString('en-IN'), unit: 'sq ft' },
+//     { label: 'Area', value: sqm.toLocaleString('en-IN'), unit: 'm²' },
 //     { label: 'Frontage', value: sides[sides.length - 1].toFixed(2), unit: 'm' },
 //     { label: 'Perimeter', value: plot.sides.reduce((s, v) => s + v, 0).toFixed(2), unit: 'm' },
 //   ];
@@ -134,13 +157,24 @@
 //     ['Notes', doc.notes],
 //   ].filter(([, v]) => v && String(v).trim());
 
-//   const copyCoords = () => {
-//     if (!latLng) return;
-//     const text = `${latLng.lat.toFixed(6)}, ${latLng.lng.toFixed(6)}`;
-//     if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
-//     setCopied(true);
-//     setTimeout(() => setCopied(false), 1400);
-//   };
+//   /* The plot number is OUR caption, not Google's — Maps titles a bare
+//      coordinate with the coordinate and no URL parameter changes that.
+//      So the number is shown here, on the row being tapped. What crosses
+//      over to Maps is the position only. */
+//   const pinLabel = doc.layoutName
+//     ? `Plot ${plot.name} — ${doc.layoutName}`
+//     : `Plot ${plot.name}`;
+
+//   const coordText = latLng
+//     ? `${latLng.lat.toFixed(6)}, ${latLng.lng.toFixed(6)}`
+//     : null;
+
+//   /* Drops the pin and stops there. No route, no navigation prompt —
+//      the customer sees where the plot sits and decides what to do with
+//      it. */
+//   const mapUrl = latLng
+//     ? `https://www.google.com/maps/search/?api=1&query=${latLng.lat.toFixed(6)},${latLng.lng.toFixed(6)}`
+//     : null;
 
 //   const more = details.length + (latLng ? 1 : 0);
 
@@ -148,288 +182,307 @@
 //     <>
 //       <style>{`
 //         @keyframes panelIn {
-//           from { transform: translateX(20px); opacity: 0; }
+//           from { transform: translateX(16px); opacity: 0; }
 //           to   { transform: translateX(0);    opacity: 1; }
 //         }
-//         @keyframes sheetIn {
-//           from { transform: translateY(18px); opacity: 0; }
+//         @keyframes dockIn {
+//           from { transform: translateY(12px); opacity: 0; }
 //           to   { transform: translateY(0);    opacity: 1; }
 //         }
 
 //         .pp {
-//           --pp-peek-body: 88px;
 //           position: absolute;
 //           top: 14px; right: 14px;
-//           width: 320px;
+//           width: 324px;
 //           max-height: calc(100% - 28px);
 //           display: flex;
 //           flex-direction: column;
 //           background: ${PAPER};
 //           border: 1px solid ${HAIR};
-//           border-radius: 16px;
+//           border-radius: 14px;
 //           box-shadow:
-//             0 12px 36px rgba(20, 24, 32, 0.14),
-//             0 1px 2px rgba(20, 24, 32, 0.06),
-//             inset 0 1px 0 rgba(255,255,255,0.7);
+//             0 1px 2px rgba(20, 24, 32, 0.08),
+//             0 16px 40px -12px rgba(20, 24, 32, 0.28);
 //           z-index: 12;
 //           box-sizing: border-box;
 //           overflow: hidden;
-//           animation: panelIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+//           animation: panelIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 //         }
 //         @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 //           .pp {
-//             background: rgba(255, 255, 255, 0.76);
-//             -webkit-backdrop-filter: blur(18px) saturate(150%);
-//             backdrop-filter: blur(18px) saturate(150%);
+//             background: rgba(255, 255, 255, 0.8);
+//             -webkit-backdrop-filter: blur(20px) saturate(160%);
+//             backdrop-filter: blur(20px) saturate(160%);
 //           }
 //         }
-
-//         .pp-grab { display: none; }
+//         /* status, read at a glance and never in the way of the type */
+//         .pp::before {
+//           content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+//           width: 3px; background: var(--st); opacity: 0.9;
+//         }
 
 //         .pp-head {
 //           flex: 0 0 auto;
-//           display: flex; align-items: flex-start; gap: 10px;
-//           padding: 16px 16px 12px;
+//           display: flex; align-items: center; gap: 10px;
+//           padding: 13px 12px 13px 18px;
 //           border-bottom: 1px solid ${HAIR_SOFT};
 //         }
 //         .pp-title { min-width: 0; }
-//         .pp-rows { margin-bottom: 4px; }
-//         .pp-eyebrow {
-//           font-family: ${SANS}; font-size: 10px; font-weight: 600;
-//           letter-spacing: 0.14em; text-transform: uppercase;
-//           color: ${TEXT_MUTED}; margin-bottom: 3px;
+//         .pp-id { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+//         .pp-pre {
+//           font-family: ${SANS}; font-size: 12px; font-weight: 500;
+//           color: ${TEXT_FAINT}; flex: 0 0 auto;
 //         }
 //         .pp-name {
-//           font-family: ${MONO}; font-size: 32px; font-weight: 600;
-//           color: ${ACCENT}; line-height: 1; letter-spacing: -0.01em;
-//           word-break: break-word;
+//           font-family: ${MONO}; font-size: 26px; font-weight: 600;
+//           color: ${TEXT_MAIN}; line-height: 1.05; letter-spacing: -0.02em;
+//           font-variant-numeric: tabular-nums;
+//           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 //         }
-//         .pp-pill {
-//           display: inline-flex; align-items: center; gap: 5px;
-//           margin-top: 8px; padding: 4px 9px; border-radius: 999px;
-//           border: 1px solid ${HAIR}; background: rgba(255,255,255,0.6);
-//           font-family: ${SANS}; font-size: 10px; font-weight: 700;
-//           letter-spacing: 0.06em; text-transform: uppercase; color: ${TEXT_MAIN};
+//         .pp-status {
+//           display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+//           font-family: ${SANS}; font-size: 12px; font-weight: 500;
+//           color: ${TEXT_MUTED}; white-space: nowrap;
 //         }
+//         .pp-status i {
+//           width: 6px; height: 6px; border-radius: 50%;
+//           background: var(--st); flex: 0 0 auto;
+//         }
+//         /* the chip's one figure — only ever shown docked and closed */
+//         .pp-mini {
+//           display: none; flex: 0 0 auto;
+//           font-family: ${MONO}; font-size: 12.5px; font-weight: 600;
+//           color: ${TEXT_MAIN}; font-variant-numeric: tabular-nums;
+//           white-space: nowrap;
+//         }
+//         .pp-mini em { font-style: normal; font-weight: 500; color: ${TEXT_FAINT}; }
+//         .pp-sep { display: none; width: 1px; height: 24px; background: ${HAIR}; flex: 0 0 auto; }
 
-//         .pp-tools { flex: 0 0 auto; margin-left: auto; display: flex; gap: 2px; }
-//         .pp-x, .pp-min {
-//           flex: 0 0 auto;
-//           background: none; border: none; color: ${TEXT_MUTED}; cursor: pointer;
-//           font-size: 20px; line-height: 1; width: 32px; height: 32px;
-//           border-radius: 8px; display: flex; align-items: center; justify-content: center;
-//           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-//           transition: background 0.15s ease, color 0.15s ease;
+//         /* two actions worth taking without opening the record: one
+//            segmented control rather than two floating buttons */
+//         .pp-quick {
+//           display: none; flex: 0 0 auto;
+//           border: 1px solid ${HAIR}; border-radius: 9px;
+//           overflow: hidden; background: ${FIELD};
 //         }
-//         .pp-x:hover, .pp-min:hover { background: rgba(20,24,32,0.06); color: ${TEXT_MAIN}; }
-//         .pp-min { font-size: 15px; }
+//         .pp-quick > * {
+//           width: 36px; height: 32px; border: none; background: none;
+//           border-left: 1px solid ${HAIR_SOFT};
+//           display: flex; align-items: center; justify-content: center;
+//           color: ${ACCENT}; cursor: pointer; text-decoration: none;
+//           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+//           transition: background 0.14s ease;
+//         }
+//         .pp-quick > *:first-child { border-left: none; }
+//         .pp-quick > *:hover { background: ${ACCENT_BG}; }
+//         .pp-quick > *:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: -2px; }
+
+//         .pp-tools { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; }
+//         .pp-btn {
+//           flex: 0 0 auto;
+//           background: none; border: none; color: ${TEXT_FAINT}; cursor: pointer;
+//           width: 30px; height: 30px; border-radius: 8px;
+//           display: flex; align-items: center; justify-content: center; gap: 3px;
+//           line-height: 1;
+//           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+//           transition: background 0.14s ease, color 0.14s ease;
+//         }
+//         .pp-btn:hover { background: rgba(20,24,32,0.05); color: ${TEXT_MAIN}; }
+//         .pp-btn:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 1px; }
+//         .pp-min { width: auto; min-width: 30px; padding: 0 6px; }
+//         .pp-count {
+//           font-family: ${SANS}; font-size: 11px; font-weight: 600;
+//           font-variant-numeric: tabular-nums;
+//         }
+//         .pp-flip { display: none; }
 
 //         .pp-body {
 //           flex: 1 1 auto; min-height: 0;
 //           overflow-y: auto; -webkit-overflow-scrolling: touch;
 //           overscroll-behavior: contain;
-//           padding: 14px 16px 16px;
+//           padding: 14px 16px 16px 18px;
 //         }
 
-//         .pp-label {
-//           font-family: ${SANS}; font-size: 10px; font-weight: 600;
-//           letter-spacing: 0.14em; text-transform: uppercase; color: ${TEXT_MUTED};
+//         /* figures as one ruled block — a spec sheet, not four cards */
+//         .pp-figs {
+//           display: grid; grid-template-columns: 1fr 1fr;
+//           border: 1px solid ${HAIR}; border-radius: 10px;
+//           background: ${FIELD}; overflow: hidden;
 //         }
-
-//         .pp-stats {
-//           display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-//           margin-bottom: 16px;
+//         .pp-fig {
+//           padding: 9px 12px; min-width: 0;
+//           border-top: 1px solid ${HAIR_SOFT};
+//           border-left: 1px solid ${HAIR_SOFT};
 //         }
-//         .pp-stat {
-//           background: ${ACCENT_BG}; border: 1px solid ${HAIR};
-//           border-radius: 10px; padding: 9px 11px; min-width: 0;
+//         .pp-fig:nth-child(-n+2) { border-top: none; }
+//         .pp-fig:nth-child(odd) { border-left: none; }
+//         .pp-fig-k {
+//           font-family: ${SANS}; font-size: 11px; font-weight: 500;
+//           color: ${TEXT_FAINT}; margin-bottom: 2px;
 //         }
-//         .pp-stat-k {
-//           font-family: ${SANS}; font-size: 9px; font-weight: 600;
-//           letter-spacing: 0.08em; text-transform: uppercase;
-//           color: ${TEXT_MUTED}; margin-bottom: 3px;
-//         }
-//         .pp-stat-v {
+//         .pp-fig-v {
 //           font-family: ${MONO}; font-size: 15px; font-weight: 600; color: ${TEXT_MAIN};
+//           font-variant-numeric: tabular-nums;
 //           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 //         }
-//         .pp-stat-u { font-size: 10px; color: ${TEXT_MUTED}; font-weight: 500; margin-left: 4px; }
-
-//         .pp-row {
-//           display: flex; gap: 10px; padding: 7px 0;
-//           border-top: 1px solid ${HAIR_SOFT};
+//         .pp-fig-u {
+//           font-family: ${SANS}; font-size: 11px; font-weight: 500;
+//           color: ${TEXT_FAINT}; margin-left: 4px;
 //         }
+
+//         .pp-rows { margin-top: 14px; }
+//         .pp-row {
+//           display: grid; grid-template-columns: 76px 1fr; gap: 12px;
+//           padding: 8px 0; border-top: 1px solid ${HAIR_SOFT};
+//         }
+//         .pp-row:first-child { border-top: none; padding-top: 2px; }
 //         .pp-row-k {
-//           font-family: ${SANS}; font-size: 10px; font-weight: 600;
-//           letter-spacing: 0.08em; text-transform: uppercase;
-//           color: ${TEXT_MUTED}; flex: 0 0 74px; padding-top: 1px;
+//           font-family: ${SANS}; font-size: 12px; font-weight: 500;
+//           color: ${TEXT_FAINT}; padding-top: 1px;
 //         }
 //         .pp-row-v {
-//           font-family: ${MONO}; font-size: 12px; color: ${TEXT_MAIN};
-//           flex: 1; min-width: 0; word-break: break-word; line-height: 1.5;
+//           font-family: ${MONO}; font-size: 12.5px; color: ${TEXT_MAIN};
+//           min-width: 0; word-break: break-word; line-height: 1.5;
 //         }
 //         .pp-row-v a { color: ${ACCENT}; text-decoration: none; }
 //         .pp-row-v a:hover { text-decoration: underline; }
 
-//         .pp-coords {
-//           display: flex; align-items: center; gap: 8px;
-//           margin: 14px 0 16px; padding: 8px 10px;
-//           border: 1px dashed ${HAIR}; border-radius: 9px;
-//           font-family: ${MONO}; font-size: 11px; color: ${TEXT_MUTED};
-//         }
-//         .pp-copy {
-//           margin-left: auto; flex: 0 0 auto; background: none; border: none;
-//           font-family: ${SANS}; font-size: 10px; font-weight: 700;
-//           letter-spacing: 0.08em; text-transform: uppercase;
-//           color: ${ACCENT}; cursor: pointer; padding: 2px 4px;
+//         /* The whole strip is the link: plot number first, because that
+//            is what the person is looking at, the figures under it as the
+//            proof of where it lands. */
+//         .pp-loc {
+//           display: flex; align-items: center; gap: 11px;
+//           margin-top: 14px; padding: 10px 12px;
+//           border: 1px solid ${HAIR}; border-radius: 10px; background: ${FIELD};
+//           text-decoration: none; cursor: pointer;
 //           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+//           transition: background 0.14s ease, border-color 0.14s ease;
 //         }
+//         .pp-loc:hover { background: ${ACCENT_BG}; border-color: rgba(44, 90, 79, 0.35); }
+//         .pp-loc:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 1px; }
+//         .pp-loc-i { flex: 0 0 auto; color: ${ACCENT}; }
+//         .pp-loc-t { min-width: 0; }
+//         .pp-loc-n {
+//           display: block; font-family: ${SANS}; font-size: 12.5px; font-weight: 600;
+//           color: ${TEXT_MAIN}; line-height: 1.3;
+//           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+//         }
+//         .pp-loc-v {
+//           display: block; font-family: ${MONO}; font-size: 11px; color: ${TEXT_FAINT};
+//           font-variant-numeric: tabular-nums; line-height: 1.4; margin-top: 2px;
+//           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+//         }
+//         .pp-loc-go { margin-left: auto; flex: 0 0 auto; color: ${TEXT_FAINT}; }
 
-//         .pp-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+//         .pp-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 //         .pp-chip {
-//           display: flex; align-items: center; gap: 6px; padding: 7px 11px;
+//           display: flex; align-items: center; gap: 6px; padding: 6px 11px;
 //           border-radius: 999px; border: 1px solid ${HAIR};
-//           background: rgba(255,255,255,0.5); color: ${TEXT_MUTED};
-//           font-family: ${SANS}; font-size: 11px; font-weight: 600; cursor: pointer;
-//           transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+//           background: ${FIELD}; color: ${TEXT_MUTED};
+//           font-family: ${SANS}; font-size: 12px; font-weight: 500; cursor: pointer;
+//           transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
 //           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 //         }
 //         .pp-chip[data-on="1"] {
-//           border-color: ${ACCENT}; background: ${ACCENT_BG}; color: ${ACCENT};
+//           border-color: rgba(44, 90, 79, 0.4); background: ${ACCENT_BG}; color: ${ACCENT};
 //         }
-//         .pp-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+//         .pp-chip i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
 
 //         .pp-foot {
 //           flex: 0 0 auto;
-//           padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+//           padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 18px;
 //           border-top: 1px solid ${HAIR_SOFT};
-//           background: linear-gradient(to top, rgba(255,255,255,0.65), rgba(255,255,255,0));
 //         }
 //         .pp-cta {
-//           width: 100%; padding: 12px; background: ${ACCENT}; border: none;
-//           border-radius: 10px; color: #FFFFFF; font-family: ${SANS}; font-size: 13px;
-//           font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-//           cursor: pointer; box-shadow: 0 4px 14px rgba(44, 90, 79, 0.28);
-//           transition: filter 0.15s ease, transform 0.1s ease;
+//           width: 100%; padding: 11px 14px; background: ${ACCENT}; border: none;
+//           border-radius: 9px; color: #FFFFFF;
+//           font-family: ${SANS}; font-size: 13.5px; font-weight: 600;
+//           letter-spacing: 0.005em; cursor: pointer;
+//           box-shadow: 0 1px 2px rgba(20, 24, 32, 0.16);
+//           transition: background 0.14s ease, transform 0.1s ease;
 //           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 //         }
-//         .pp-cta:hover { filter: brightness(1.08); }
+//         .pp-cta:hover { background: ${ACCENT_DEEP}; }
 //         .pp-cta:active { transform: translateY(1px); }
+//         .pp-cta:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 2px; }
 
 //         /* ---- laptop and up: the rail ----
 //            Collapsed it is header only, a card in the corner; the map
 //            keeps the rest of the width and the framing gives it back. */
-//         @media (min-width: ${SHEET_BP + 1}px) {
+//         @media (min-width: ${DOCK_BP + 1}px) {
 //           .pp[data-collapsed="1"] { max-height: none; }
 //           .pp[data-collapsed="1"] .pp-body,
 //           .pp[data-collapsed="1"] .pp-foot { display: none; }
 //           .pp[data-collapsed="1"] .pp-head { border-bottom: none; }
 //         }
-//         @media (min-width: ${SHEET_BP + 1}px) and (max-width: 1240px) {
-//           .pp { width: 300px; }
-//           .pp-name { font-size: 28px; }
-//         }
-
-//         /* ---- tablet and phone: a sheet on the bottom edge ----
-//            It covers the band the framing has already stopped using, so
-//            the plot stays in view above it.
-
-//            The header goes horizontal here — name and status on one
-//            line, eyebrow dropped — because height is the scarce thing in
-//            a sheet, and the word PLOT sitting above a plot number was
-//            never carrying its keep. */
-//         @media (max-width: ${SHEET_BP}px) {
-//           .pp {
-//             top: auto; bottom: 8px;
-//             width: auto; max-height: 60vh;
-//             border-radius: 18px;
-//             box-shadow: 0 -8px 30px rgba(10, 14, 20, 0.32);
-//             animation: sheetIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-//             transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-//           }
-//           /* peeking: name, status, figures, CTA — and the plot still
-//              visible above it, which is the whole point */
-//           .pp[data-collapsed="1"] { max-height: var(--pp-peek); }
-
-//           .pp-grab {
-//             display: flex; align-items: center; justify-content: center; gap: 8px;
-//             width: 100%; padding: 9px 0 5px; border: none; background: none;
-//             cursor: pointer; -webkit-tap-highlight-color: transparent;
-//             touch-action: manipulation;
-//           }
-//           .pp-grab i {
-//             display: block; width: 34px; height: 4px; border-radius: 999px;
-//             background: rgba(20,24,32,0.18);
-//           }
-//           .pp-grab span {
-//             font-family: ${SANS}; font-size: 10px; font-weight: 600;
-//             letter-spacing: 0.08em; text-transform: uppercase; color: ${TEXT_MUTED};
-//           }
-//           .pp-min { display: none; }
-
-//           .pp-head { align-items: center; }
-//           .pp-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-//           .pp-eyebrow { display: none; }
-//           .pp-pill { margin-top: 0; }
-//           .pp-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-//         }
-
-//         /* tablet: centred and capped. A 1024-wide bar of paper leaves a
-//            lot of nothing between the figures and the button, so the
-//            sheet keeps a readable measure, the record runs in two
-//            columns, and the CTA sits at its own width on the right
-//            instead of stretching the whole way across. */
-//         @media (min-width: 641px) and (max-width: ${SHEET_BP}px) {
-//           .pp {
-//             left: 16px; right: 16px; bottom: 16px;
-//             margin: 0 auto; max-width: 760px;
-//             --pp-peek: 210px;
-//           }
-//           .pp-head { padding: 6px 18px 12px; }
-//           .pp-name { font-size: 26px; }
-//           .pp-body { padding: 14px 18px 16px; }
-//           .pp-stats { gap: 10px; }
-//           .pp-stat { padding: 10px 12px; }
-//           .pp-stat-v { font-size: 17px; }
-//           .pp-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }
-//           .pp-foot {
-//             display: flex; justify-content: flex-end;
-//             padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
-//           }
-//           .pp-cta { width: auto; min-width: 300px; }
-//         }
-
-//         /* phone */
-//         @media (max-width: 640px) {
-//           .pp { left: 8px; right: 8px; --pp-peek: 196px; }
-//           .pp-head { padding: 6px 14px 10px; }
+//         @media (min-width: ${DOCK_BP + 1}px) and (max-width: 1240px) {
+//           .pp { width: 302px; }
 //           .pp-name { font-size: 24px; }
-//           .pp-body { padding: 12px 14px 14px; }
-//           .pp-stats { gap: 6px; }
-//           .pp-stat { padding: 7px 8px; }
-//           .pp-stat-v { font-size: 13px; }
-//           .pp-foot { padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px)); }
-//           .pp-cta { padding: 12px; font-size: 12px; }
 //         }
 
-//         @media (max-width: 380px) {
-//           .pp { --pp-peek: 188px; }
-//           .pp-name { font-size: 21px; }
-//           .pp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-//           .pp-row-k { flex-basis: 64px; }
+//         /* ---- tablet and phone: docked to a corner ----
+//            Closed it is a chip on one edge and the rest of the screen is
+//            map, so two fingers can rotate and tilt anywhere. Open it
+//            grows in place into a narrow card, still in the corner. */
+//         @media (max-width: ${DOCK_BP}px) {
+//           .pp {
+//             top: auto; left: auto;
+//             right: 12px;
+//             bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+//             width: min(344px, calc(100vw - 24px));
+//             max-height: min(62vh, 470px);
+//             box-shadow:
+//               0 1px 2px rgba(10, 14, 20, 0.12),
+//               0 14px 32px -10px rgba(10, 14, 20, 0.4);
+//             animation: dockIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+//             transition: max-height 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+//           }
+//           .pp[data-side="left"] { left: 12px; right: auto; }
+
+//           /* the chip */
+//           .pp[data-collapsed="1"] { width: auto; max-height: none; }
+//           .pp[data-collapsed="1"] .pp-body,
+//           .pp[data-collapsed="1"] .pp-foot { display: none; }
+//           .pp[data-collapsed="1"] .pp-head {
+//             border-bottom: none; padding: 8px 8px 8px 16px;
+//           }
+//           .pp[data-collapsed="1"] .pp-title { display: flex; align-items: center; gap: 10px; }
+//           .pp[data-collapsed="1"] .pp-status { margin-top: 0; }
+//           .pp[data-collapsed="1"] .pp-mini { display: block; }
+//           .pp[data-collapsed="1"] .pp-sep { display: block; }
+//           .pp[data-collapsed="1"] .pp-quick { display: flex; }
+//           .pp[data-collapsed="1"] .pp-name { font-size: 19px; }
+
+//           .pp-head { padding: 10px 10px 10px 16px; }
+//           .pp-name { font-size: 22px; }
+//           .pp-flip { display: flex; }
+
+//           .pp-body { padding: 13px 14px 14px 16px; }
+//           .pp-fig-v { font-size: 14px; }
+//           .pp-foot { padding: 11px 14px calc(13px + env(safe-area-inset-bottom, 0px)) 16px; }
 //         }
 
-//         /* landscape phone: almost no height to spend, so the peek is
-//            most of what there is and expanding is a last resort */
+//         /* narrow phones: the chip drops the status word and keeps the
+//            dot, which is the part that is read at a glance anyway */
+//         @media (max-width: 430px) {
+//           .pp { right: 9px; bottom: calc(9px + env(safe-area-inset-bottom, 0px)); }
+//           .pp[data-side="left"] { left: 9px; }
+//           .pp[data-collapsed="1"] .pp-status span { display: none; }
+//           .pp[data-collapsed="1"] .pp-head { padding: 8px 6px 8px 14px; }
+//           .pp[data-collapsed="1"] .pp-title { gap: 9px; }
+//           .pp-quick > * { width: 34px; }
+//           .pp-row { grid-template-columns: 68px 1fr; gap: 10px; }
+//         }
+
+//         /* landscape phone: height is the scarce thing, so the open card
+//            is allowed to run tall and stays narrow */
 //         @media (max-height: 460px) and (max-width: 900px) {
-//           .pp { max-height: 78vh; --pp-peek: 148px; }
-//           .pp-name { font-size: 20px; }
-//           .pp-rows { grid-template-columns: 1fr 1fr; }
+//           .pp { width: min(320px, calc(100vw - 24px)); max-height: 84vh; }
 //         }
 
 //         @media (prefers-reduced-motion: reduce) {
 //           .pp { animation: none; transition: none; }
-//           .pp-chip, .pp-cta, .pp-x, .pp-min { transition: none; }
+//           .pp-chip, .pp-cta, .pp-btn, .pp-loc, .pp-quick > * { transition: none; }
 //         }
 //       `}</style>
 
@@ -439,59 +492,125 @@
 //         className="pp"
 //         key={plot.name}
 //         ref={boxRef}
+//         style={{ '--st': stMeta.dot }}
 //         data-collapsed={collapsed ? '1' : '0'}
+//         data-side={side}
 //         role="dialog"
 //         aria-label={`Plot ${plot.name}`}
 //       >
-//         <button
-//           type="button"
-//           className="pp-grab"
-//           onClick={toggle}
-//           aria-expanded={!collapsed}
-//           aria-label={collapsed ? 'Show full record' : 'Show less'}
-//         >
-//           <i />
-//           {collapsed && more > 0 && <span>{more} more</span>}
-//         </button>
-
 //         <div className="pp-head">
 //           <div className="pp-title">
-//             <div className="pp-eyebrow">Plot</div>
-//             <div className="pp-name">{plot.name}</div>
-//             <span className="pp-pill">
-//               <span className="pp-dot" style={{ background: stMeta.dot }} />
-//               {stMeta.label}
+//             <div className="pp-id">
+//               <span className="pp-pre">Plot</span>
+//               <span className="pp-name">{plot.name}</span>
+//             </div>
+//             <span className="pp-status">
+//               <i />
+//               <span>{stMeta.label}</span>
 //             </span>
 //           </div>
+
+//           <span className="pp-sep" />
+//           <span className="pp-mini">
+//             {sqft.toLocaleString('en-IN')}
+//             <em> sq ft</em>
+//           </span>
+
+//           <div className="pp-quick">
+//             {mapUrl && (
+//               <a
+//                 href={mapUrl}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 title="Open location in Google Maps"
+//                 aria-label={`Open location of ${pinLabel} in Google Maps`}
+//               >
+//                 <svg
+//                   width="15" height="15" viewBox="0 0 24 24" fill="none"
+//                   stroke="currentColor" strokeWidth="2"
+//                   strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//                 >
+//                   <path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0z" />
+//                   <circle cx="12" cy="10" r="2.6" />
+//                 </svg>
+//               </a>
+//             )}
+//             <button
+//               type="button"
+//               onClick={onQuote}
+//               title="Build quotation"
+//               aria-label="Build quotation"
+//             >
+//               <svg
+//                 width="15" height="15" viewBox="0 0 24 24" fill="none"
+//                 stroke="currentColor" strokeWidth="2"
+//                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//               >
+//                 <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+//                 <path d="M14 3v5h5M9 13h6M9 17h4" />
+//               </svg>
+//             </button>
+//           </div>
+
 //           <div className="pp-tools">
 //             <button
 //               type="button"
-//               className="pp-min"
-//               onClick={toggle}
-//               aria-expanded={!collapsed}
-//               title={collapsed ? 'Show full record' : 'Collapse'}
+//               className="pp-btn pp-flip"
+//               onClick={flip}
+//               title={side === 'right' ? 'Move to left corner' : 'Move to right corner'}
+//               aria-label={side === 'right' ? 'Move panel to left corner' : 'Move panel to right corner'}
 //             >
-//               {collapsed ? '▾' : '▴'}
+//               <svg
+//                 width="15" height="15" viewBox="0 0 24 24" fill="none"
+//                 stroke="currentColor" strokeWidth="2"
+//                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//               >
+//                 <path d="M8 7 4 11l4 4M16 7l4 4-4 4M4 11h16" />
+//               </svg>
 //             </button>
 //             <button
 //               type="button"
-//               className="pp-x"
+//               className="pp-btn pp-min"
+//               onClick={toggle}
+//               aria-expanded={!collapsed}
+//               title={collapsed ? 'Show full record' : 'Collapse'}
+//               aria-label={collapsed ? `Show full record, ${more} more fields` : 'Collapse'}
+//             >
+//               <svg
+//                 width="14" height="14" viewBox="0 0 24 24" fill="none"
+//                 stroke="currentColor" strokeWidth="2.2"
+//                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//                 style={{ transform: collapsed ? 'none' : 'rotate(180deg)' }}
+//               >
+//                 <path d="M6 9l6 6 6-6" />
+//               </svg>
+//               {collapsed && more > 0 && <span className="pp-count">{more}</span>}
+//             </button>
+//             <button
+//               type="button"
+//               className="pp-btn"
 //               onClick={onClose}
 //               aria-label="Close plot details"
 //             >
-//               ×
+//               <svg
+//                 width="14" height="14" viewBox="0 0 24 24" fill="none"
+//                 stroke="currentColor" strokeWidth="2.2"
+//                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//               >
+//                 <path d="M18 6 6 18M6 6l12 12" />
+//               </svg>
 //             </button>
 //           </div>
 //         </div>
 
 //         <div className="pp-body">
-//           <div className="pp-stats">
-//             {stats.map((s, i) => (
-//               <div className="pp-stat" key={i}>
-//                 <div className="pp-stat-k">{s.label}</div>
-//                 <div className="pp-stat-v">
-//                   {s.value}
-//                   <span className="pp-stat-u">{s.unit}</span>
+//           <div className="pp-figs">
+//             {figures.map((f, i) => (
+//               <div className="pp-fig" key={i}>
+//                 <div className="pp-fig-k">{f.label}</div>
+//                 <div className="pp-fig-v">
+//                   {f.value}
+//                   <span className="pp-fig-u">{f.unit}</span>
 //                 </div>
 //               </div>
 //             ))}
@@ -513,15 +632,37 @@
 //           )}
 
 //           {latLng && (
-//             <div className="pp-coords">
-//               <span>{latLng.lat.toFixed(6)}, {latLng.lng.toFixed(6)}</span>
-//               <button type="button" className="pp-copy" onClick={copyCoords}>
-//                 {copied ? 'Copied' : 'Copy'}
-//               </button>
-//             </div>
+//             <a
+//               className="pp-loc"
+//               href={mapUrl}
+//               target="_blank"
+//               rel="noopener noreferrer"
+//               aria-label={`Open location of ${pinLabel} in Google Maps`}
+//             >
+//               <svg
+//                 className="pp-loc-i"
+//                 width="15" height="15" viewBox="0 0 24 24" fill="none"
+//                 stroke="currentColor" strokeWidth="2"
+//                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//               >
+//                 <path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0z" />
+//                 <circle cx="12" cy="10" r="2.6" />
+//               </svg>
+//               <span className="pp-loc-t">
+//                 <span className="pp-loc-n">{pinLabel}</span>
+//                 <span className="pp-loc-v">{coordText}</span>
+//               </span>
+//               <svg
+//                 className="pp-loc-go"
+//                 width="14" height="14" viewBox="0 0 24 24" fill="none"
+//                 stroke="currentColor" strokeWidth="2"
+//                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+//               >
+//                 <path d="M7 17 17 7M9 7h8v8" />
+//               </svg>
+//             </a>
 //           )}
 
-//           {/* <div className="pp-label">Status</div> */}
 //           {/* <div className="pp-chips">
 //             {STATUS_KEYS.map((k) => {
 //               const s = STATUS[k];
@@ -534,7 +675,7 @@
 //                   aria-pressed={st === k}
 //                   onClick={() => setStatus(plot.name, k)}
 //                 >
-//                   <span className="pp-dot" style={{ background: s.dot }} />
+//                   <i style={{ background: s.dot }} />
 //                   {s.label}
 //                 </button>
 //               );
@@ -543,16 +684,18 @@
 //         </div>
 
 //         <div className="pp-foot">
-//           <button type="button" className="pp-cta" onClick={onQuote}>
+//           {/* <button type="button" className="pp-cta" onClick={onQuote}>
 //             Build quotation
-//           </button>
+//           </button> */}
+
+// {onBack && <button type="button" onClick={onBack}>Back</button>}
+// {onQuote && <button type="button" className="quote-btn" onClick={onQuote}>Build quotation</button>}
+// {setStatus && <StatusPicker value={status} onChange={setStatus} />}
 //         </div>
 //       </div>
 //     </>
 //   );
 // }
-
-
 
 
 
@@ -565,52 +708,75 @@ import { STATUS, STATUS_KEYS } from '../../theme/status';
 import { MONO, SANS } from '../../theme/tokens';
 
 /* The panel is the one light surface in a dark app: it is the piece a
-   customer leans over the phone to read, so it reads like paper.
+   customer leans over the phone to read, so it reads like paper — and
+   closer to a property spec sheet than to a stack of cards. Figures sit
+   in one ruled block, the record under it in plain label/value rows,
+   and the only saturated things on the surface are the status rail down
+   the leading edge and the quotation button.
 
    Structure is header / scroll body / footer. The name, status and the
    quotation button are the three things a salesman needs at arm's
    length, so they never scroll away — on a long plot record it is the
    dimensions and notes that move.
 
-   On a laptop it is a rail down the right. On a tablet or a phone
-   there is no width to spare for one, so it goes to the bottom edge as
-   a sheet — and a sheet at 56vh covers the plot it is describing. So it
-   opens at a PEEK: name, status, the four figures and the CTA, which is
-   the whole answer most of the time, in about a third of the height.
-   The record is one tap away on the grab handle.
+   On a laptop it is a rail down the right.
+
+   On a tablet or a phone it DOCKS to a bottom corner instead of
+   spanning the bottom edge. A full-width sheet ate the band of map you
+   put two fingers on to rotate and tilt, and there is no way to rotate
+   around a plot when the panel is sitting on the half of the screen you
+   need to twist. So the resting state is a chip — plot number, status,
+   area, and the two actions that matter as a segmented control — about
+   the height of a button, hard against one corner. Everything else is
+   map, and every gesture lands on map.
+
+   The chip can be flipped to the other corner when the plot ends up
+   underneath it, and it opens into a narrow card in place; the card is
+   still corner-anchored, so most of the screen stays live.
 
    Either way the panel measures itself and reports the band it occupies
    through onReserve, so the map can frame the plot in the space that is
-   actually left rather than behind the panel. */
-const HAIR = 'rgba(20, 24, 32, 0.10)';
-const HAIR_SOFT = 'rgba(20, 24, 32, 0.06)';
-const TEXT_MAIN = '#1C2230';
-const TEXT_MUTED = '#6B7280';
-const ACCENT = '#2C5A4F';
-const ACCENT_BG = 'rgba(44, 90, 79, 0.08)';
-const PAPER = 'rgba(255, 255, 255, 0.92)';
+   actually left rather than behind the panel. Docked and closed it
+   reserves nothing at all — a chip in a corner is not worth pushing a
+   layout around.
 
-const SHEET_BP = 1024;   // at or below this the panel is a bottom sheet
+   SHARED LINKS: onQuote and setStatus arrive as null when the page is
+   opened from a WhatsApp link. Nothing here asks whether it is a share
+   — it just doesn't draw a control it has no handler for, so the
+   customer gets the plan and the plot record and nothing that writes. */
+const HAIR = 'rgba(20, 24, 32, 0.11)';
+const HAIR_SOFT = 'rgba(20, 24, 32, 0.06)';
+const TEXT_MAIN = '#161B24';
+const TEXT_MUTED = '#6B7280';
+const TEXT_FAINT = '#8A93A0';
+const ACCENT = '#2C5A4F';
+const ACCENT_DEEP = '#23483F';
+const ACCENT_BG = 'rgba(44, 90, 79, 0.07)';
+const FIELD = 'rgba(255, 255, 255, 0.5)';
+const PAPER = 'rgba(255, 255, 255, 0.94)';
+
+const DOCK_BP = 1024;   // at or below this the panel docks to a corner
 
 export default function DetailPanel({
   plot, status, setStatus, onClose, onQuote, latLng, onReserve,
 }) {
   const [collapsed, setCollapsed] = useState(true);
-  const [sheet, setSheet] = useState(
+  const [side, setSide] = useState('right');
+  const [dock, setDock] = useState(
     () => typeof window !== 'undefined'
-      && window.matchMedia(`(max-width: ${SHEET_BP}px)`).matches,
+      && window.matchMedia(`(max-width: ${DOCK_BP}px)`).matches,
   );
   const boxRef = useRef(null);
   const reserveRef = useRef(onReserve);
 
   useEffect(() => { reserveRef.current = onReserve; }, [onReserve]);
 
-  /* rail or sheet — the same breakpoint the stylesheet uses, because
+  /* rail or dock — the same breakpoint the stylesheet uses, because
      the measurement below has to know which edge is spoken for */
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const mq = window.matchMedia(`(max-width: ${SHEET_BP}px)`);
-    const onChange = (e) => setSheet(e.matches);
+    const mq = window.matchMedia(`(max-width: ${DOCK_BP}px)`);
+    const onChange = (e) => setDock(e.matches);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
@@ -618,15 +784,14 @@ export default function DetailPanel({
   /* ---------------------------------------------------------------
      Tell the map what it can't have.
 
-     Measured rather than declared: the sheet's height depends on the
-     record, the safe-area inset and whether it is peeking, and a
-     hard-coded number would be wrong on most of those. A ResizeObserver
-     on the panel covers all of them at once.
+     Measured rather than declared: the card's height depends on the
+     record and the safe-area inset, and a hard-coded number would be
+     wrong on most of those. A ResizeObserver covers them at once.
 
-     The rail only counts when it is TALL. Collapsed to its header it is
-     a small card in the top-right corner and the middle of the map is
-     free, so reserving 348 px of width would push the plot left for no
-     reason.
+     Nothing is reserved for a closed chip, on either layout. The rail
+     only counts when it is TALL; the docked card only counts when it is
+     open, and then as width if it is narrow enough for the plot to sit
+     beside it, as height if it isn't.
   --------------------------------------------------------------- */
   useEffect(() => {
     const send = reserveRef.current;
@@ -638,14 +803,21 @@ export default function DetailPanel({
       const r = el.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      if (sheet) {
-        send({ right: 0, bottom: Math.round(Math.max(vh - r.top, 0)) });
-      } else {
-        send({
-          right: r.height > vh * 0.55 ? Math.round(Math.max(vw - r.left, 0)) : 0,
-          bottom: 0,
-        });
+
+      if (dock) {
+        if (collapsed) { send({ right: 0, bottom: 0 }); return; }
+        if (side === 'right' && r.width <= vw * 0.62) {
+          send({ right: Math.round(Math.max(vw - r.left, 0)), bottom: 0 });
+        } else {
+          send({ right: 0, bottom: Math.round(Math.max(vh - r.top, 0)) });
+        }
+        return;
       }
+
+      send({
+        right: r.height > vh * 0.55 ? Math.round(Math.max(vw - r.left, 0)) : 0,
+        bottom: 0,
+      });
     };
 
     measure();
@@ -656,7 +828,7 @@ export default function DetailPanel({
       ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [plot, sheet, collapsed]);
+  }, [plot, dock, collapsed, side]);
 
   /* give the space back when the panel goes away for good */
   useEffect(() => () => {
@@ -664,6 +836,7 @@ export default function DetailPanel({
   }, []);
 
   const toggle = useCallback(() => setCollapsed((v) => !v), []);
+  const flip = useCallback(() => setSide((s) => (s === 'right' ? 'left' : 'right')), []);
 
   if (!plot) return null;
 
@@ -675,9 +848,9 @@ export default function DetailPanel({
   const sqm = Math.round(plot.area);
   const sqft = Math.round(plot.area * SQFT);
 
-  const stats = [
-    { label: 'Area', value: sqm.toLocaleString('en-IN'), unit: 'm²' },
+  const figures = [
     { label: 'Area', value: sqft.toLocaleString('en-IN'), unit: 'sq ft' },
+    { label: 'Area', value: sqm.toLocaleString('en-IN'), unit: 'm²' },
     { label: 'Frontage', value: sides[sides.length - 1].toFixed(2), unit: 'm' },
     { label: 'Perimeter', value: plot.sides.reduce((s, v) => s + v, 0).toFixed(2), unit: 'm' },
   ];
@@ -713,129 +886,177 @@ export default function DetailPanel({
 
   const more = details.length + (latLng ? 1 : 0);
 
+  /* Without a quote handler and without a location there is nothing in
+     the segmented control, and an empty bordered box in the chip looks
+     like a broken button. Same reasoning for the footer below. */
+  const showQuick = !!(mapUrl || onQuote);
+  const showFoot = !!(onQuote || setStatus);
+
   return (
     <>
       <style>{`
         @keyframes panelIn {
-          from { transform: translateX(20px); opacity: 0; }
+          from { transform: translateX(16px); opacity: 0; }
           to   { transform: translateX(0);    opacity: 1; }
         }
-        @keyframes sheetIn {
-          from { transform: translateY(18px); opacity: 0; }
+        @keyframes dockIn {
+          from { transform: translateY(12px); opacity: 0; }
           to   { transform: translateY(0);    opacity: 1; }
         }
 
         .pp {
-          --pp-peek: 200px;
           position: absolute;
           top: 14px; right: 14px;
-          width: 320px;
+          width: 324px;
           max-height: calc(100% - 28px);
           display: flex;
           flex-direction: column;
           background: ${PAPER};
           border: 1px solid ${HAIR};
-          border-radius: 16px;
+          border-radius: 14px;
           box-shadow:
-            0 12px 36px rgba(20, 24, 32, 0.14),
-            0 1px 2px rgba(20, 24, 32, 0.06),
-            inset 0 1px 0 rgba(255,255,255,0.7);
+            0 1px 2px rgba(20, 24, 32, 0.08),
+            0 16px 40px -12px rgba(20, 24, 32, 0.28);
           z-index: 12;
           box-sizing: border-box;
           overflow: hidden;
-          animation: panelIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: panelIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
         }
         @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
           .pp {
-            background: rgba(255, 255, 255, 0.76);
-            -webkit-backdrop-filter: blur(18px) saturate(150%);
-            backdrop-filter: blur(18px) saturate(150%);
+            background: rgba(255, 255, 255, 0.8);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            backdrop-filter: blur(20px) saturate(160%);
           }
         }
-
-        .pp-grab { display: none; }
+        /* status, read at a glance and never in the way of the type */
+        .pp::before {
+          content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+          width: 3px; background: var(--st); opacity: 0.9;
+        }
 
         .pp-head {
           flex: 0 0 auto;
-          display: flex; align-items: flex-start; gap: 10px;
-          padding: 16px 16px 12px;
+          display: flex; align-items: center; gap: 10px;
+          padding: 13px 12px 13px 18px;
           border-bottom: 1px solid ${HAIR_SOFT};
         }
         .pp-title { min-width: 0; }
-        .pp-rows { margin-bottom: 4px; }
-        .pp-eyebrow {
-          font-family: ${SANS}; font-size: 10px; font-weight: 600;
-          letter-spacing: 0.14em; text-transform: uppercase;
-          color: ${TEXT_MUTED}; margin-bottom: 3px;
+        .pp-id { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+        .pp-pre {
+          font-family: ${SANS}; font-size: 12px; font-weight: 500;
+          color: ${TEXT_FAINT}; flex: 0 0 auto;
         }
         .pp-name {
-          font-family: ${MONO}; font-size: 32px; font-weight: 600;
-          color: ${ACCENT}; line-height: 1; letter-spacing: -0.01em;
-          word-break: break-word;
+          font-family: ${MONO}; font-size: 26px; font-weight: 600;
+          color: ${TEXT_MAIN}; line-height: 1.05; letter-spacing: -0.02em;
+          font-variant-numeric: tabular-nums;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .pp-pill {
-          display: inline-flex; align-items: center; gap: 5px;
-          margin-top: 8px; padding: 4px 9px; border-radius: 999px;
-          border: 1px solid ${HAIR}; background: rgba(255,255,255,0.6);
-          font-family: ${SANS}; font-size: 10px; font-weight: 700;
-          letter-spacing: 0.06em; text-transform: uppercase; color: ${TEXT_MAIN};
+        .pp-status {
+          display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+          font-family: ${SANS}; font-size: 12px; font-weight: 500;
+          color: ${TEXT_MUTED}; white-space: nowrap;
         }
+        .pp-status i {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: var(--st); flex: 0 0 auto;
+        }
+        /* the chip's one figure — only ever shown docked and closed */
+        .pp-mini {
+          display: none; flex: 0 0 auto;
+          font-family: ${MONO}; font-size: 12.5px; font-weight: 600;
+          color: ${TEXT_MAIN}; font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        .pp-mini em { font-style: normal; font-weight: 500; color: ${TEXT_FAINT}; }
+        .pp-sep { display: none; width: 1px; height: 24px; background: ${HAIR}; flex: 0 0 auto; }
 
-        .pp-tools { flex: 0 0 auto; margin-left: auto; display: flex; gap: 2px; }
-        .pp-x, .pp-min {
-          flex: 0 0 auto;
-          background: none; border: none; color: ${TEXT_MUTED}; cursor: pointer;
-          font-size: 20px; line-height: 1; width: 32px; height: 32px;
-          border-radius: 8px; display: flex; align-items: center; justify-content: center;
-          -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-          transition: background 0.15s ease, color 0.15s ease;
+        /* two actions worth taking without opening the record: one
+           segmented control rather than two floating buttons */
+        .pp-quick {
+          display: none; flex: 0 0 auto;
+          border: 1px solid ${HAIR}; border-radius: 9px;
+          overflow: hidden; background: ${FIELD};
         }
-        .pp-x:hover, .pp-min:hover { background: rgba(20,24,32,0.06); color: ${TEXT_MAIN}; }
-        .pp-min { font-size: 15px; }
+        .pp-quick > * {
+          width: 36px; height: 32px; border: none; background: none;
+          border-left: 1px solid ${HAIR_SOFT};
+          display: flex; align-items: center; justify-content: center;
+          color: ${ACCENT}; cursor: pointer; text-decoration: none;
+          -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+          transition: background 0.14s ease;
+        }
+        .pp-quick > *:first-child { border-left: none; }
+        .pp-quick > *:hover { background: ${ACCENT_BG}; }
+        .pp-quick > *:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: -2px; }
+
+        .pp-tools { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; }
+        .pp-btn {
+          flex: 0 0 auto;
+          background: none; border: none; color: ${TEXT_FAINT}; cursor: pointer;
+          width: 30px; height: 30px; border-radius: 8px;
+          display: flex; align-items: center; justify-content: center; gap: 3px;
+          line-height: 1;
+          -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+          transition: background 0.14s ease, color 0.14s ease;
+        }
+        .pp-btn:hover { background: rgba(20,24,32,0.05); color: ${TEXT_MAIN}; }
+        .pp-btn:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 1px; }
+        .pp-min { width: auto; min-width: 30px; padding: 0 6px; }
+        .pp-count {
+          font-family: ${SANS}; font-size: 11px; font-weight: 600;
+          font-variant-numeric: tabular-nums;
+        }
+        .pp-flip { display: none; }
 
         .pp-body {
           flex: 1 1 auto; min-height: 0;
           overflow-y: auto; -webkit-overflow-scrolling: touch;
           overscroll-behavior: contain;
-          padding: 14px 16px 16px;
+          padding: 14px 16px 16px 18px;
         }
 
-        .pp-label {
-          font-family: ${SANS}; font-size: 10px; font-weight: 600;
-          letter-spacing: 0.14em; text-transform: uppercase; color: ${TEXT_MUTED};
+        /* figures as one ruled block — a spec sheet, not four cards */
+        .pp-figs {
+          display: grid; grid-template-columns: 1fr 1fr;
+          border: 1px solid ${HAIR}; border-radius: 10px;
+          background: ${FIELD}; overflow: hidden;
         }
-
-        .pp-stats {
-          display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-          margin-bottom: 16px;
+        .pp-fig {
+          padding: 9px 12px; min-width: 0;
+          border-top: 1px solid ${HAIR_SOFT};
+          border-left: 1px solid ${HAIR_SOFT};
         }
-        .pp-stat {
-          background: ${ACCENT_BG}; border: 1px solid ${HAIR};
-          border-radius: 10px; padding: 9px 11px; min-width: 0;
+        .pp-fig:nth-child(-n+2) { border-top: none; }
+        .pp-fig:nth-child(odd) { border-left: none; }
+        .pp-fig-k {
+          font-family: ${SANS}; font-size: 11px; font-weight: 500;
+          color: ${TEXT_FAINT}; margin-bottom: 2px;
         }
-        .pp-stat-k {
-          font-family: ${SANS}; font-size: 9px; font-weight: 600;
-          letter-spacing: 0.08em; text-transform: uppercase;
-          color: ${TEXT_MUTED}; margin-bottom: 3px;
-        }
-        .pp-stat-v {
+        .pp-fig-v {
           font-family: ${MONO}; font-size: 15px; font-weight: 600; color: ${TEXT_MAIN};
+          font-variant-numeric: tabular-nums;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .pp-stat-u { font-size: 10px; color: ${TEXT_MUTED}; font-weight: 500; margin-left: 4px; }
-
-        .pp-row {
-          display: flex; gap: 10px; padding: 7px 0;
-          border-top: 1px solid ${HAIR_SOFT};
+        .pp-fig-u {
+          font-family: ${SANS}; font-size: 11px; font-weight: 500;
+          color: ${TEXT_FAINT}; margin-left: 4px;
         }
+
+        .pp-rows { margin-top: 14px; }
+        .pp-row {
+          display: grid; grid-template-columns: 76px 1fr; gap: 12px;
+          padding: 8px 0; border-top: 1px solid ${HAIR_SOFT};
+        }
+        .pp-row:first-child { border-top: none; padding-top: 2px; }
         .pp-row-k {
-          font-family: ${SANS}; font-size: 10px; font-weight: 600;
-          letter-spacing: 0.08em; text-transform: uppercase;
-          color: ${TEXT_MUTED}; flex: 0 0 74px; padding-top: 1px;
+          font-family: ${SANS}; font-size: 12px; font-weight: 500;
+          color: ${TEXT_FAINT}; padding-top: 1px;
         }
         .pp-row-v {
-          font-family: ${MONO}; font-size: 12px; color: ${TEXT_MAIN};
-          flex: 1; min-width: 0; word-break: break-word; line-height: 1.5;
+          font-family: ${MONO}; font-size: 12.5px; color: ${TEXT_MAIN};
+          min-width: 0; word-break: break-word; line-height: 1.5;
         }
         .pp-row-v a { color: ${ACCENT}; text-decoration: none; }
         .pp-row-v a:hover { text-decoration: underline; }
@@ -843,188 +1064,139 @@ export default function DetailPanel({
         /* The whole strip is the link: plot number first, because that
            is what the person is looking at, the figures under it as the
            proof of where it lands. */
-        .pp-coords {
-          display: flex; align-items: center; gap: 10px;
-          margin: 14px 0 16px; padding: 9px 11px;
-          border: 1px dashed ${HAIR}; border-radius: 9px;
+        .pp-loc {
+          display: flex; align-items: center; gap: 11px;
+          margin-top: 14px; padding: 10px 12px;
+          border: 1px solid ${HAIR}; border-radius: 10px; background: ${FIELD};
           text-decoration: none; cursor: pointer;
           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-          transition: background 0.15s ease, border-color 0.15s ease;
+          transition: background 0.14s ease, border-color 0.14s ease;
         }
-        .pp-coords:hover {
-          background: ${ACCENT_BG}; border-color: ${ACCENT}; border-style: solid;
-        }
-        .pp-coords:active { transform: translateY(1px); }
-        .pp-coords:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 2px; }
-        .pp-pin { flex: 0 0 auto; color: ${ACCENT}; }
-        .pp-coords-t { min-width: 0; }
-        .pp-coords-n {
-          display: block;
-          font-family: ${MONO}; font-size: 12px; font-weight: 600;
+        .pp-loc:hover { background: ${ACCENT_BG}; border-color: rgba(44, 90, 79, 0.35); }
+        .pp-loc:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 1px; }
+        .pp-loc-i { flex: 0 0 auto; color: ${ACCENT}; }
+        .pp-loc-t { min-width: 0; }
+        .pp-loc-n {
+          display: block; font-family: ${SANS}; font-size: 12.5px; font-weight: 600;
           color: ${TEXT_MAIN}; line-height: 1.3;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .pp-coords-v {
-          display: block;
-          font-family: ${MONO}; font-size: 10px; color: ${TEXT_MUTED};
-          line-height: 1.4; margin-top: 1px;
+        .pp-loc-v {
+          display: block; font-family: ${MONO}; font-size: 11px; color: ${TEXT_FAINT};
+          font-variant-numeric: tabular-nums; line-height: 1.4; margin-top: 2px;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .pp-open {
-          margin-left: auto; flex: 0 0 auto;
-          font-family: ${SANS}; font-size: 10px; font-weight: 700;
-          letter-spacing: 0.08em; text-transform: uppercase;
-          color: ${ACCENT}; white-space: nowrap;
-        }
+        .pp-loc-go { margin-left: auto; flex: 0 0 auto; color: ${TEXT_FAINT}; }
 
-        .pp-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+        .pp-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
         .pp-chip {
-          display: flex; align-items: center; gap: 6px; padding: 7px 11px;
+          display: flex; align-items: center; gap: 6px; padding: 6px 11px;
           border-radius: 999px; border: 1px solid ${HAIR};
-          background: rgba(255,255,255,0.5); color: ${TEXT_MUTED};
-          font-family: ${SANS}; font-size: 11px; font-weight: 600; cursor: pointer;
-          transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+          background: ${FIELD}; color: ${TEXT_MUTED};
+          font-family: ${SANS}; font-size: 12px; font-weight: 500; cursor: pointer;
+          transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
         }
         .pp-chip[data-on="1"] {
-          border-color: ${ACCENT}; background: ${ACCENT_BG}; color: ${ACCENT};
+          border-color: rgba(44, 90, 79, 0.4); background: ${ACCENT_BG}; color: ${ACCENT};
         }
-        .pp-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+        .pp-chip i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
 
         .pp-foot {
           flex: 0 0 auto;
-          padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+          padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 18px;
           border-top: 1px solid ${HAIR_SOFT};
-          background: linear-gradient(to top, rgba(255,255,255,0.65), rgba(255,255,255,0));
         }
         .pp-cta {
-          width: 100%; padding: 12px; background: ${ACCENT}; border: none;
-          border-radius: 10px; color: #FFFFFF; font-family: ${SANS}; font-size: 13px;
-          font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-          cursor: pointer; box-shadow: 0 4px 14px rgba(44, 90, 79, 0.28);
-          transition: filter 0.15s ease, transform 0.1s ease;
+          width: 100%; padding: 11px 14px; background: ${ACCENT}; border: none;
+          border-radius: 9px; color: #FFFFFF;
+          font-family: ${SANS}; font-size: 13.5px; font-weight: 600;
+          letter-spacing: 0.005em; cursor: pointer;
+          box-shadow: 0 1px 2px rgba(20, 24, 32, 0.16);
+          transition: background 0.14s ease, transform 0.1s ease;
           -webkit-tap-highlight-color: transparent; touch-action: manipulation;
         }
-        .pp-cta:hover { filter: brightness(1.08); }
+        .pp-cta:hover { background: ${ACCENT_DEEP}; }
         .pp-cta:active { transform: translateY(1px); }
+        .pp-cta:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 2px; }
 
         /* ---- laptop and up: the rail ----
            Collapsed it is header only, a card in the corner; the map
            keeps the rest of the width and the framing gives it back. */
-        @media (min-width: ${SHEET_BP + 1}px) {
+        @media (min-width: ${DOCK_BP + 1}px) {
           .pp[data-collapsed="1"] { max-height: none; }
           .pp[data-collapsed="1"] .pp-body,
           .pp[data-collapsed="1"] .pp-foot { display: none; }
           .pp[data-collapsed="1"] .pp-head { border-bottom: none; }
         }
-        @media (min-width: ${SHEET_BP + 1}px) and (max-width: 1240px) {
-          .pp { width: 300px; }
-          .pp-name { font-size: 28px; }
-        }
-
-        /* ---- tablet and phone: a sheet on the bottom edge ----
-           It covers the band the framing has already stopped using, so
-           the plot stays in view above it.
-
-           The header goes horizontal here — name and status on one
-           line, eyebrow dropped — because height is the scarce thing in
-           a sheet, and the word PLOT sitting above a plot number was
-           never carrying its keep. */
-        @media (max-width: ${SHEET_BP}px) {
-          .pp {
-            top: auto; bottom: 8px;
-            width: auto; max-height: 60vh;
-            border-radius: 18px;
-            box-shadow: 0 -8px 30px rgba(10, 14, 20, 0.32);
-            animation: sheetIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-          }
-          /* peeking: name, status, figures, CTA — and the plot still
-             visible above it, which is the whole point */
-          .pp[data-collapsed="1"] { max-height: var(--pp-peek); }
-
-          .pp-grab {
-            display: flex; align-items: center; justify-content: center; gap: 8px;
-            width: 100%; padding: 9px 0 5px; border: none; background: none;
-            cursor: pointer; -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
-          }
-          .pp-grab i {
-            display: block; width: 34px; height: 4px; border-radius: 999px;
-            background: rgba(20,24,32,0.18);
-          }
-          .pp-grab span {
-            font-family: ${SANS}; font-size: 10px; font-weight: 600;
-            letter-spacing: 0.08em; text-transform: uppercase; color: ${TEXT_MUTED};
-          }
-          .pp-min { display: none; }
-
-          .pp-head { align-items: center; }
-          .pp-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-          .pp-eyebrow { display: none; }
-          .pp-pill { margin-top: 0; }
-          .pp-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-          .pp-coords { padding: 10px 11px; }
-        }
-
-        /* tablet: centred and capped. A 1024-wide bar of paper leaves a
-           lot of nothing between the figures and the button, so the
-           sheet keeps a readable measure, the record runs in two
-           columns, and the CTA sits at its own width on the right
-           instead of stretching the whole way across. */
-        @media (min-width: 641px) and (max-width: ${SHEET_BP}px) {
-          .pp {
-            left: 16px; right: 16px; bottom: 16px;
-            margin: 0 auto; max-width: 760px;
-            --pp-peek: 210px;
-          }
-          .pp-head { padding: 6px 18px 12px; }
-          .pp-name { font-size: 26px; }
-          .pp-body { padding: 14px 18px 16px; }
-          .pp-stats { gap: 10px; }
-          .pp-stat { padding: 10px 12px; }
-          .pp-stat-v { font-size: 17px; }
-          .pp-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }
-          .pp-foot {
-            display: flex; justify-content: flex-end;
-            padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
-          }
-          .pp-cta { width: auto; min-width: 300px; }
-        }
-
-        /* phone */
-        @media (max-width: 640px) {
-          .pp { left: 8px; right: 8px; --pp-peek: 196px; }
-          .pp-head { padding: 6px 14px 10px; }
+        @media (min-width: ${DOCK_BP + 1}px) and (max-width: 1240px) {
+          .pp { width: 302px; }
           .pp-name { font-size: 24px; }
-          .pp-body { padding: 12px 14px 14px; }
-          .pp-stats { gap: 6px; }
-          .pp-stat { padding: 7px 8px; }
-          .pp-stat-v { font-size: 13px; }
-          .pp-foot { padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px)); }
-          .pp-cta { padding: 12px; font-size: 12px; }
         }
 
-        @media (max-width: 380px) {
-          .pp { --pp-peek: 188px; }
-          .pp-name { font-size: 21px; }
-          .pp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .pp-row-k { flex-basis: 64px; }
-          /* no width for both, and the pin already says where it goes */
-          .pp-open { display: none; }
+        /* ---- tablet and phone: docked to a corner ----
+           Closed it is a chip on one edge and the rest of the screen is
+           map, so two fingers can rotate and tilt anywhere. Open it
+           grows in place into a narrow card, still in the corner. */
+        @media (max-width: ${DOCK_BP}px) {
+          .pp {
+            top: auto; left: auto;
+            right: 12px;
+            bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            width: min(344px, calc(100vw - 24px));
+            max-height: min(62vh, 470px);
+            box-shadow:
+              0 1px 2px rgba(10, 14, 20, 0.12),
+              0 14px 32px -10px rgba(10, 14, 20, 0.4);
+            animation: dockIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: max-height 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+          }
+          .pp[data-side="left"] { left: 12px; right: auto; }
+
+          /* the chip */
+          .pp[data-collapsed="1"] { width: auto; max-height: none; }
+          .pp[data-collapsed="1"] .pp-body,
+          .pp[data-collapsed="1"] .pp-foot { display: none; }
+          .pp[data-collapsed="1"] .pp-head {
+            border-bottom: none; padding: 8px 8px 8px 16px;
+          }
+          .pp[data-collapsed="1"] .pp-title { display: flex; align-items: center; gap: 10px; }
+          .pp[data-collapsed="1"] .pp-status { margin-top: 0; }
+          .pp[data-collapsed="1"] .pp-mini { display: block; }
+          .pp[data-collapsed="1"] .pp-sep { display: block; }
+          .pp[data-collapsed="1"] .pp-quick { display: flex; }
+          .pp[data-collapsed="1"] .pp-name { font-size: 19px; }
+
+          .pp-head { padding: 10px 10px 10px 16px; }
+          .pp-name { font-size: 22px; }
+          .pp-flip { display: flex; }
+
+          .pp-body { padding: 13px 14px 14px 16px; }
+          .pp-fig-v { font-size: 14px; }
+          .pp-foot { padding: 11px 14px calc(13px + env(safe-area-inset-bottom, 0px)) 16px; }
         }
 
-        /* landscape phone: almost no height to spend, so the peek is
-           most of what there is and expanding is a last resort */
+        /* narrow phones: the chip drops the status word and keeps the
+           dot, which is the part that is read at a glance anyway */
+        @media (max-width: 430px) {
+          .pp { right: 9px; bottom: calc(9px + env(safe-area-inset-bottom, 0px)); }
+          .pp[data-side="left"] { left: 9px; }
+          .pp[data-collapsed="1"] .pp-status span { display: none; }
+          .pp[data-collapsed="1"] .pp-head { padding: 8px 6px 8px 14px; }
+          .pp[data-collapsed="1"] .pp-title { gap: 9px; }
+          .pp-quick > * { width: 34px; }
+          .pp-row { grid-template-columns: 68px 1fr; gap: 10px; }
+        }
+
+        /* landscape phone: height is the scarce thing, so the open card
+           is allowed to run tall and stays narrow */
         @media (max-height: 460px) and (max-width: 900px) {
-          .pp { max-height: 78vh; --pp-peek: 148px; }
-          .pp-name { font-size: 20px; }
-          .pp-rows { grid-template-columns: 1fr 1fr; }
+          .pp { width: min(320px, calc(100vw - 24px)); max-height: 84vh; }
         }
 
         @media (prefers-reduced-motion: reduce) {
           .pp { animation: none; transition: none; }
-          .pp-chip, .pp-cta, .pp-x, .pp-min, .pp-coords { transition: none; }
+          .pp-chip, .pp-cta, .pp-btn, .pp-loc, .pp-quick > * { transition: none; }
         }
       `}</style>
 
@@ -1034,59 +1206,129 @@ export default function DetailPanel({
         className="pp"
         key={plot.name}
         ref={boxRef}
+        style={{ '--st': stMeta.dot }}
         data-collapsed={collapsed ? '1' : '0'}
+        data-side={side}
         role="dialog"
         aria-label={`Plot ${plot.name}`}
       >
-        <button
-          type="button"
-          className="pp-grab"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Show full record' : 'Show less'}
-        >
-          <i />
-          {collapsed && more > 0 && <span>{more} more</span>}
-        </button>
-
         <div className="pp-head">
           <div className="pp-title">
-            <div className="pp-eyebrow">Plot</div>
-            <div className="pp-name">{plot.name}</div>
-            <span className="pp-pill">
-              <span className="pp-dot" style={{ background: stMeta.dot }} />
-              {stMeta.label}
+            <div className="pp-id">
+              <span className="pp-pre">Plot</span>
+              <span className="pp-name">{plot.name}</span>
+            </div>
+            <span className="pp-status">
+              <i />
+              <span>{stMeta.label}</span>
             </span>
           </div>
+
+          <span className="pp-sep" />
+          <span className="pp-mini">
+            {sqft.toLocaleString('en-IN')}
+            <em> sq ft</em>
+          </span>
+
+          {showQuick && (
+            <div className="pp-quick">
+              {mapUrl && (
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open location in Google Maps"
+                  aria-label={`Open location of ${pinLabel} in Google Maps`}
+                >
+                  <svg
+                    width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                  >
+                    <path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0z" />
+                    <circle cx="12" cy="10" r="2.6" />
+                  </svg>
+                </a>
+              )}
+              {onQuote && (
+                <button
+                  type="button"
+                  onClick={onQuote}
+                  title="Build quotation"
+                  aria-label="Build quotation"
+                >
+                  <svg
+                    width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                  >
+                    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                    <path d="M14 3v5h5M9 13h6M9 17h4" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="pp-tools">
             <button
               type="button"
-              className="pp-min"
-              onClick={toggle}
-              aria-expanded={!collapsed}
-              title={collapsed ? 'Show full record' : 'Collapse'}
+              className="pp-btn pp-flip"
+              onClick={flip}
+              title={side === 'right' ? 'Move to left corner' : 'Move to right corner'}
+              aria-label={side === 'right' ? 'Move panel to left corner' : 'Move panel to right corner'}
             >
-              {collapsed ? '▾' : '▴'}
+              <svg
+                width="15" height="15" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+              >
+                <path d="M8 7 4 11l4 4M16 7l4 4-4 4M4 11h16" />
+              </svg>
             </button>
             <button
               type="button"
-              className="pp-x"
+              className="pp-btn pp-min"
+              onClick={toggle}
+              aria-expanded={!collapsed}
+              title={collapsed ? 'Show full record' : 'Collapse'}
+              aria-label={collapsed ? `Show full record, ${more} more fields` : 'Collapse'}
+            >
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                style={{ transform: collapsed ? 'none' : 'rotate(180deg)' }}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+              {collapsed && more > 0 && <span className="pp-count">{more}</span>}
+            </button>
+            <button
+              type="button"
+              className="pp-btn"
               onClick={onClose}
               aria-label="Close plot details"
             >
-              ×
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
         </div>
 
         <div className="pp-body">
-          <div className="pp-stats">
-            {stats.map((s, i) => (
-              <div className="pp-stat" key={i}>
-                <div className="pp-stat-k">{s.label}</div>
-                <div className="pp-stat-v">
-                  {s.value}
-                  <span className="pp-stat-u">{s.unit}</span>
+          <div className="pp-figs">
+            {figures.map((f, i) => (
+              <div className="pp-fig" key={i}>
+                <div className="pp-fig-k">{f.label}</div>
+                <div className="pp-fig-v">
+                  {f.value}
+                  <span className="pp-fig-u">{f.unit}</span>
                 </div>
               </div>
             ))}
@@ -1109,55 +1351,73 @@ export default function DetailPanel({
 
           {latLng && (
             <a
-              className="pp-coords"
+              className="pp-loc"
               href={mapUrl}
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`Open location of ${pinLabel} in Google Maps`}
             >
               <svg
-                className="pp-pin"
-                width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.2"
+                className="pp-loc-i"
+                width="15" height="15" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2"
                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
               >
                 <path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0z" />
                 <circle cx="12" cy="10" r="2.6" />
               </svg>
-              <span className="pp-coords-t">
-                <span className="pp-coords-n">{pinLabel}</span>
-                <span className="pp-coords-v">{coordText}</span>
+              <span className="pp-loc-t">
+                <span className="pp-loc-n">{pinLabel}</span>
+                <span className="pp-loc-v">{coordText}</span>
               </span>
-              <span className="pp-open">Location</span>
+              <svg
+                className="pp-loc-go"
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+              >
+                <path d="M7 17 17 7M9 7h8v8" />
+              </svg>
             </a>
           )}
 
-          {/* <div className="pp-label">Status</div> */}
-          {/* <div className="pp-chips">
-            {STATUS_KEYS.map((k) => {
-              const s = STATUS[k];
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  className="pp-chip"
-                  data-on={st === k ? '1' : '0'}
-                  aria-pressed={st === k}
-                  onClick={() => setStatus(plot.name, k)}
-                >
-                  <span className="pp-dot" style={{ background: s.dot }} />
-                  {s.label}
-                </button>
-              );
-            })}
-          </div> */}
+          {/* Status chips stay off for now, as before. When they come
+              back, `setStatus &&` is what keeps them out of a shared
+              link — a customer must not be able to mark a plot sold.
+
+          {setStatus && (
+            <div className="pp-chips">
+              {STATUS_KEYS.map((k) => {
+                const s = STATUS[k];
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    className="pp-chip"
+                    data-on={st === k ? '1' : '0'}
+                    aria-pressed={st === k}
+                    onClick={() => setStatus(plot.name, k)}
+                  >
+                    <i style={{ background: s.dot }} />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          )} */}
         </div>
 
-        <div className="pp-foot">
-          <button type="button" className="pp-cta" onClick={onQuote}>
-            Build quotation
-          </button>
-        </div>
+        {/* No handler, no footer — on a shared link the record simply
+            ends after the location strip. */}
+        {showFoot && (
+          <div className="pp-foot">
+            {onQuote && (
+              <button type="button" className="pp-cta" onClick={onQuote}>
+                Build quotation
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

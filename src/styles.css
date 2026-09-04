@@ -15,7 +15,7 @@ body {
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  margin: 0;
+  
 }
 
 /* Google's own controls, brought into the app's palette. */
