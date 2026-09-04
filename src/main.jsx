@@ -7,7 +7,7 @@ import { AuthProvider } from './context/Authcontext';
 import { ToastProvider } from './components/Toast';
 
 import LoginPage from './pages/LoginPage';
-// import RegisterEmployeePage from './pages/RegisterEmployeePage';
+import RegisterEmployeePage from './pages/Registeremployeepage';
 import EmployeeHome from './pages/Employeehome';
 import PlanPage from './pages/PlanPage';
 import QuotationsListPage from './pages/Quotationspage';
@@ -34,6 +34,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterEmployeePage />} />
             <Route path="/share/maps/:mapId/*" element={<PlanPage share />} />
 
             <Route path="/" element={<RequireAuth><EmployeeHome /></RequireAuth>} />
