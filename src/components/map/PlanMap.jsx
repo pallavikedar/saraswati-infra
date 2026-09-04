@@ -504,7 +504,7 @@ function PanelIcon({ name, size = 18 }) {
 const PANELS = [
   { k: 'info', label: 'Info', short: 'Info' },
   { k: 'gallery', label: 'Gallery', short: 'Photos' },
-  { k: 'brochures', label: 'Brochures', short: 'PDF' },
+  { k: 'brochures', label: 'Brochures', short: 'Brochure' },
 ];
 
 /* ── WHICH EDGE, AND HOW BIG ─────────────────────────────────────────
@@ -1266,7 +1266,7 @@ export default function PlanMap({
      a plot actually HAS a status, so an unsold plot, or one Firestore
      has not mapped yet, still draws in the plain drawing tone. */
   const [ownNumbers, setOwnNumbers] = useState(showNumbers !== false);
-  const [ownStatus, setOwnStatus] = useState(showStatus !== false);
+  const [ownStatus, setOwnStatus] = useState(showStatus !== true);
   const numbersOn = setShowNumbers ? showNumbers : ownNumbers;
   const statusOn = setShowStatus ? showStatus : ownStatus;
   const toggleNumbers = setShowNumbers || setOwnNumbers;
